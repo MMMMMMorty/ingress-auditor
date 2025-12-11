@@ -1,0 +1,4 @@
+## Append samples of your project ##
+resources:
+- ingress-audit_v1alpha1_ingresstlslog.yaml
+# +kubebuilder:scaffold:manifestskustomizesamples

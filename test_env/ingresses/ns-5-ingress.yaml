@@ -1,0 +1,23 @@
+# TLS with secretName and crt with correct SAN
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ingress-5
+  namespace: ns-5
+spec:
+  ingressClassName: nginx
+  tls:
+  - hosts:
+      - https-example-5.foo.com
+    secretName: secret-tls
+  rules:
+  - host: https-example-5.foo.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: nginx-5
+            port:
+              number: 80

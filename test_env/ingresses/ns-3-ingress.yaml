@@ -1,0 +1,23 @@
+# TLS with secret and secret only with CN but not SAN
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ingress-3
+  namespace: ns-3
+spec:
+  ingressClassName: nginx
+  tls:
+  - hosts:
+      - https-example-3.foo.com
+    secretName: secret-tls
+  rules:
+  - host: https-example-3.foo.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: nginx-3
+            port:
+              number: 80
