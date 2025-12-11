@@ -22,16 +22,20 @@ import (
 	"crypto/x509"
 	"errors"
 	"fmt"
+	"math/rand"
 	"strings"
 	"time"
 
 	v1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
+
+	ingressauditv1alpha1 "github.com/MMMMMMorty/ingress-auditor/api/v1alpha1"
 )
 
 // IngressTLSLogReconciler reconciles a IngressTLSLog object
@@ -41,11 +45,20 @@ type IngressTLSLogReconciler struct {
 
 	// Interval records the interval for regeneration of TLS logs
 	Interval time.Duration
-	// ingressErrorMap stores the error of each ingress
+	// IngressErrorMap stores the error of each ingress
 	// If the ingress's error exists, skip
 	// If not, add or update the ingress's error
-	ingressErrorMap map[string]error
+	IngressErrorMap map[string]error
+
+	//IngressUpdateTimeMap records the update time of the ingress
+	IngressUpdateTimeMap map[string]time.Time
 }
+
+// ingressAuditorNamespace where the project is deployed in
+const (
+	ingressAuditorNamespace = "ingress-auditor-system"
+	ErrLogLevel             = "Error"
+)
 
 var ErrFetchIngree = errors.New("unable to fetch ingress")
 var ErrSecretNameMissing = errors.New("the secretName does not define in ingress")
@@ -54,6 +67,7 @@ var ErrCrtOrKeyMissing = errors.New("the crt or key does not exist in secret")
 var ErrHostsMissing = errors.New("the Hosts does not define in ingress")
 var ErrTLSVerification = errors.New("TLS verification failed")
 var ErrHTTPRedirectMissing = errors.New("TLS is not used and redirect is not applied neither")
+var ErrCreateTLSLog = errors.New("failed to create new TLS log")
 
 // +kubebuilder:rbac:groups=ingress-audit.morty.dev,resources=ingresstlslogs,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=ingress-audit.morty.dev,resources=ingresstlslogs/status,verbs=get;update;patch
@@ -72,14 +86,16 @@ var ErrHTTPRedirectMissing = errors.New("TLS is not used and redirect is not app
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.22.4/pkg/reconcile
 func (r *IngressTLSLogReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
-	// Init ingressErrorMap
-	if r.ingressErrorMap == nil {
-		r.ingressErrorMap = make(map[string]error)
+	// Init IngressErrorMap
+	if r.IngressErrorMap == nil {
+		r.IngressErrorMap = make(map[string]error)
 	}
 
 	// Fetch the ingress instance
 	ingress := &networkingv1.Ingress{}
 	ingressNamespacedName := req.NamespacedName.String()
+	ingressName := req.NamespacedName.Name
+	ingressNs := req.NamespacedName.Namespace
 	err := r.Get(ctx, req.NamespacedName, ingress)
 	if err != nil {
 		exist := r.checkKeyValue(ingressNamespacedName, ErrFetchIngree)
@@ -89,9 +105,13 @@ func (r *IngressTLSLogReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		}
 
 		// If not, update the error
-		r.updateValueForKey(ingressNamespacedName, ErrFetchIngree)
+		if err := r.logErrorAndUpdateMaps(ctx, ingressNs, ingressName, ErrFetchIngree, ingressNamespacedName); err != nil {
+			log.Error(err, "failed to create log instance")
+			return ctrl.Result{RequeueAfter: r.Interval}, nil
+		}
+
 		log.Error(err, "unable to fetch ingress")
-		return ctrl.Result{RequeueAfter: r.Interval}, ErrFetchIngree
+		return ctrl.Result{RequeueAfter: r.Interval}, nil
 	}
 
 	// Check if TLS exists
@@ -108,10 +128,14 @@ func (r *IngressTLSLogReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 				}
 
 				// If not, update the error
-				r.updateValueForKey(ingressNamespacedName, ErrSecretNameMissing)
+				if err := r.logErrorAndUpdateMaps(ctx, ingressNs, ingressName, ErrSecretNameMissing, ingressNamespacedName); err != nil {
+					log.Error(err, "failed to create log instance")
+					return ctrl.Result{RequeueAfter: r.Interval}, nil
+				}
+
 				log.Info("The secretName does not define in ingress")
 				// generate a log, "namespace-ingress-TLS secretName is empty."
-				return ctrl.Result{RequeueAfter: r.Interval}, ErrSecretNameMissing
+				return ctrl.Result{RequeueAfter: r.Interval}, nil
 			}
 
 			// Fetch the secret
@@ -125,9 +149,13 @@ func (r *IngressTLSLogReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 				}
 
 				// If not, update the error
-				r.updateValueForKey(ingressNamespacedName, ErrFetchSecret)
+				if err := r.logErrorAndUpdateMaps(ctx, ingressNs, ingressName, ErrFetchSecret, ingressNamespacedName); err != nil {
+					log.Error(err, "failed to create log instance")
+					return ctrl.Result{RequeueAfter: r.Interval}, nil
+				}
+
 				log.Error(err, "unable to fetch secret "+tls.SecretName)
-				return ctrl.Result{RequeueAfter: r.Interval}, fmt.Errorf("unable to fetch secret %s in %s, err: %v", tls.SecretName, ingress.Namespace, err)
+				return ctrl.Result{RequeueAfter: r.Interval}, nil
 			}
 
 			// Get crt and key
@@ -142,9 +170,13 @@ func (r *IngressTLSLogReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 				}
 
 				// If not, update the error
-				r.updateValueForKey(ingressNamespacedName, ErrCrtOrKeyMissing)
+				if err := r.logErrorAndUpdateMaps(ctx, ingressNs, ingressName, ErrCrtOrKeyMissing, ingressNamespacedName); err != nil {
+					log.Error(err, "failed to create log instance")
+					return ctrl.Result{RequeueAfter: r.Interval}, nil
+				}
+
 				log.Info("The crt or key does not exist in secret")
-				return ctrl.Result{RequeueAfter: r.Interval}, ErrCrtOrKeyMissing
+				return ctrl.Result{RequeueAfter: r.Interval}, nil
 			}
 
 			// Get the hosts
@@ -156,9 +188,13 @@ func (r *IngressTLSLogReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 				}
 
 				// If not, update the error
-				r.updateValueForKey(ingressNamespacedName, ErrHostsMissing)
+				if err := r.logErrorAndUpdateMaps(ctx, ingressNs, ingressName, ErrHostsMissing, ingressNamespacedName); err != nil {
+					log.Error(err, "failed to create log instance")
+					return ctrl.Result{RequeueAfter: r.Interval}, nil
+				}
+
 				log.Info("The Hosts does not define in ingress")
-				return ctrl.Result{RequeueAfter: r.Interval}, ErrHostsMissing
+				return ctrl.Result{RequeueAfter: r.Interval}, nil
 			}
 
 			// For all the hosts, use openssl verifies it
@@ -172,9 +208,13 @@ func (r *IngressTLSLogReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 					}
 
 					// If not, update the error
-					r.updateValueForKey(ingressNamespacedName, ErrTLSVerification)
+					if err := r.logErrorAndUpdateMaps(ctx, ingressNs, ingressName, ErrTLSVerification, ingressNamespacedName); err != nil {
+						log.Error(err, "failed to create log instance")
+						return ctrl.Result{RequeueAfter: r.Interval}, nil
+					}
+
 					log.Error(err, "TLS verification failed")
-					return ctrl.Result{RequeueAfter: r.Interval}, ErrTLSVerification
+					return ctrl.Result{RequeueAfter: r.Interval}, nil
 				}
 			}
 
@@ -190,9 +230,13 @@ func (r *IngressTLSLogReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 			}
 
 			// If not, update the error
-			r.updateValueForKey(ingressNamespacedName, ErrHTTPRedirectMissing)
+			if err := r.logErrorAndUpdateMaps(ctx, ingressNs, ingressName, ErrHTTPRedirectMissing, ingressNamespacedName); err != nil {
+				log.Error(err, "failed to create log instance")
+				return ctrl.Result{RequeueAfter: r.Interval}, nil
+			}
+
 			log.Info("TLS is not used and redirect is not applied neither")
-			return ctrl.Result{RequeueAfter: r.Interval}, ErrHTTPRedirectMissing
+			return ctrl.Result{RequeueAfter: r.Interval}, nil
 		}
 
 		redirect := false
@@ -212,9 +256,13 @@ func (r *IngressTLSLogReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 			}
 
 			// If not, update the error
-			r.updateValueForKey(ingressNamespacedName, ErrHTTPRedirectMissing)
+			if err := r.logErrorAndUpdateMaps(ctx, ingressNs, ingressName, ErrHTTPRedirectMissing, ingressNamespacedName); err != nil {
+				log.Error(err, "failed to create log instance")
+				return ctrl.Result{RequeueAfter: r.Interval}, nil
+			}
+
 			log.Info("TLS is not used and redirect is not applied neither")
-			return ctrl.Result{RequeueAfter: r.Interval}, ErrHTTPRedirectMissing
+			return ctrl.Result{RequeueAfter: r.Interval}, nil
 		}
 
 		log.Info(fmt.Sprintf("Ingress %s TLS is not used but redirect is applied", ingressNamespacedName))
@@ -228,15 +276,57 @@ func (r *IngressTLSLogReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 
 // checkKeyValue checks if the given key exists in the map and has the specified value.
 func (r *IngressTLSLogReconciler) checkKeyValue(key string, value error) bool {
-	if v, ok := r.ingressErrorMap[key]; ok {
-		return v == value
+	// Only the key exists, value is the same and updateTime within lastUpdatTime add with interval, returns true
+	if v, ok := r.IngressErrorMap[key]; ok && v == value {
+		if lastUpdateTime, ok := r.IngressUpdateTimeMap[key]; ok {
+			if time.Now().Before(lastUpdateTime.Add(r.Interval)) {
+				return true
+			}
+		}
 	}
 
 	return false
 }
 
-func (r *IngressTLSLogReconciler) updateValueForKey(key string, value error) {
-	r.ingressErrorMap[key] = value
+// logErrorAndUpdateMaps updates maps of IngressUpdateTimeMap and IngressErrorMap
+func (r *IngressTLSLogReconciler) updateValueForKey(key string, value error, updateTime time.Time) time.Time {
+	r.IngressUpdateTimeMap[key] = updateTime
+	r.IngressErrorMap[key] = value
+	return updateTime
+}
+
+// createTLSLog creates ingresstlslogs instance
+func (r *IngressTLSLogReconciler) createTLSLog(ingressNamespace string, ingressName string, err error, updateTime time.Time) *ingressauditv1alpha1.IngressTLSLog {
+	timeStr := updateTime.Format("2006-01-02-15-04-05")
+	uniqueSuffix := fmt.Sprintf("%04d", rand.Intn(10000)) // random 4-digit number
+	log := &ingressauditv1alpha1.IngressTLSLog{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      fmt.Sprintf("%s-%s-%s-%s", ingressNamespace, ingressName, timeStr, uniqueSuffix),
+			Namespace: ingressAuditorNamespace,
+		},
+		Spec: ingressauditv1alpha1.IngressTLSLogSpec{
+			LogLevel:            ErrLogLevel,
+			NameSpace:           ingressNamespace,
+			IngressName:         ingressName,
+			Message:             err.Error(),
+			GenerationTimestamp: &metav1.Time{Time: updateTime},
+		},
+	}
+
+	return log
+}
+
+// logErrorAndUpdateMaps creates ingresstlslogs instance and updates maps of IngressUpdateTimeMap and IngressErrorMap
+func (r *IngressTLSLogReconciler) logErrorAndUpdateMaps(ctx context.Context, ingressNs, ingressName string, errType error, ingressNamespacedName string) error {
+	updateTime := time.Now()
+	TLSlog := r.createTLSLog(ingressNs, ingressName, errType, updateTime)
+	if err := r.Create(ctx, TLSlog); err != nil {
+		return err
+	}
+
+	r.updateValueForKey(ingressNamespacedName, errType, updateTime)
+
+	return nil
 }
 
 // checkTLS used the []byte PEM crt and PEM key to connect host with HTTPS

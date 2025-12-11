@@ -81,7 +81,7 @@ func main() {
 	flag.StringVar(&metricsCertKey, "metrics-cert-key", "tls.key", "The name of the metrics server key file.")
 	flag.BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
-	flag.IntVar(&intervalSeconds, "interval-second", 120, "After each interval in seconds, the ingress TLS logs will be regenerated due to the reconciliation trigger.")
+	flag.IntVar(&intervalSeconds, "interval-second", 3600, "After each interval in seconds, the ingress TLS logs will be regenerated due to the reconciliation trigger.")
 	opts := zap.Options{
 		Development: true,
 	}
@@ -182,9 +182,11 @@ func main() {
 	}
 
 	if err := (&controller.IngressTLSLogReconciler{
-		Client:   mgr.GetClient(),
-		Scheme:   mgr.GetScheme(),
-		Interval: time.Duration(intervalSeconds) * time.Second,
+		Client:               mgr.GetClient(),
+		Scheme:               mgr.GetScheme(),
+		Interval:             time.Duration(intervalSeconds) * time.Second,
+		IngressErrorMap:      make(map[string]error),
+		IngressUpdateTimeMap: make(map[string]time.Time),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "IngressTLSLog")
 		os.Exit(1)
