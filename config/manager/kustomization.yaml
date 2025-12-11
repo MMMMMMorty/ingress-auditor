@@ -5,4 +5,4 @@ kind: Kustomization
 images:
 - name: controller
   newName: mmmmmmorty/ingress-auditor
-  newTag: v0.12
+  newTag: v0.14
