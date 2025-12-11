@@ -72,6 +72,56 @@ var _ = Describe("Manager", Ordered, func() {
 		cmd = exec.Command("make", "deploy", fmt.Sprintf("IMG=%s", projectImage))
 		_, err = utils.Run(cmd)
 		Expect(err).NotTo(HaveOccurred(), "Failed to deploy the controller-manager")
+
+		By("deploying ingress-nginx controller")
+		_, err = exec.Command(
+			"kubectl", "apply", "-f",
+			"https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/deploy/static/provider/kind/deploy.yaml",
+		).CombinedOutput()
+		Expect(err).NotTo(HaveOccurred())
+
+		By("waiting up to 3 minutes for ingress-nginx controller to be ready")
+		cmd := exec.Command(
+			"kubectl", "wait", "--namespace", "ingress-nginx",
+			"--for=condition=available", "--timeout=180s", "deployment/ingress-nginx-controller",
+		)
+		_, err = cmd.CombinedOutput()
+		Expect(err).NotTo(HaveOccurred())
+
+		// Creates my own environment for testing
+		// Create 5 ns and create service expose port 80
+		By("creating tetsting namespace")
+		for i := 1; i <= 5; i++ {
+			ns := fmt.Sprintf("ns-%d", i)
+			cmd := exec.Command("kubectl", "create", "ns", ns)
+			_, err := utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred(), "Failed to create namespace")
+
+			By("creating deployment " + dep)
+			_, err = exec.Command("kubectl", "create", "deployment", dep, "-n", ns, "--image=nginx").CombinedOutput()
+			Expect(err).NotTo(HaveOccurred())
+
+			By("exposing service " + dep)
+			_, err = exec.Command("kubectl", "expose", "deployment", dep, "-n", ns, "--port=80", "--target-port=80").CombinedOutput()
+			Expect(err).NotTo(HaveOccurred())
+		}
+
+		// define createSecret function to create TLS secrets
+		createSecret := func(ns, crt, key string) {
+			By("creating secret in " + ns)
+			_, err := exec.Command(
+				"kubectl", "create", "secret", "tls", "secret-tls",
+				"--cert="+crt,
+				"--key="+key,
+				"-n", ns,
+			).CombinedOutput()
+			Expect(err).NotTo(HaveOccurred())
+		}
+
+		// creates 3 TLS secrets
+		createSecret("ns-2", "./tls/tls-2.crt", "./tls/tls-2.key")
+		createSecret("ns-3", "./tls/tls-3.crt", "./tls/tls-3.key")
+		createSecret("ns-5", "./tls/tls-5.crt", "./tls/tls-5.key")
 	})
 
 	// After all tests have been executed, clean up by undeploying the controller, uninstalling CRDs,
@@ -92,6 +142,25 @@ var _ = Describe("Manager", Ordered, func() {
 		By("removing manager namespace")
 		cmd = exec.Command("kubectl", "delete", "ns", namespace)
 		_, _ = utils.Run(cmd)
+
+		By("removing ingress-nginx controller")
+		_, err = exec.Command(
+			"kubectl", "delete", "-f",
+			"https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/deploy/static/provider/kind/deploy.yaml",
+		).CombinedOutput()
+		Expect(err).NotTo(HaveOccurred())
+
+		// define deleteSecrets function
+		deleteSecret := func(ns string) {
+			By("deleting secret in " + ns)
+			exec.Command("kubectl", "delete", "secret", "secret-tls", "-n", ns).CombinedOutput()
+		}
+
+		// delete 3 TLS secrets
+		deleteSecret("ns-2")
+		deleteSecret("ns-3")
+		deleteSecret("ns-5")
+
 	})
 
 	// After each test, check for failures and collect logs, events,
@@ -277,6 +346,26 @@ var _ = Describe("Manager", Ordered, func() {
 		//    fmt.Sprintf(`controller_runtime_reconcile_total{controller="%s",result="success"} 1`,
 		//    strings.ToLower(<Kind>),
 		// ))
+		It("test if checking ingress", func() {
+			cmd := exec.Command("kubectl", "get",
+				"pods", "-l", "control-plane=controller-manager",
+				"-o", "go-template={{ range .items }}"+
+					"{{ if not .metadata.deletionTimestamp }}"+
+					"{{ .metadata.name }}"+
+					"{{ \"\\n\" }}{{ end }}{{ end }}",
+				"-n", namespace,
+			)
+
+			podOutput, err := utils.Run(cmd)
+			g.Expect(err).NotTo(HaveOccurred(), "Failed to retrieve controller-manager pod information")
+			podNames := utils.GetNonEmptyLines(podOutput)
+			g.Expect(podNames).To(HaveLen(1), "expected 1 controller pod running")
+			controllerPodName = podNames[0]
+			g.Expect(controllerPodName).To(ContainSubstring("controller-manager"))
+
+			// TODO: add ingresses
+
+		})
 	})
 })
 

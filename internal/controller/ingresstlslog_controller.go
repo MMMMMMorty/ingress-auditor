@@ -267,9 +267,6 @@ func (r *IngressTLSLogReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 
 		log.Info(fmt.Sprintf("Ingress %s TLS is not used but redirect is applied", ingressNamespacedName))
 	}
-	// If does not exist, check if not exist in the map, generate one error crd for that ingress
-	// Add it to map
-	// If exists, continue
 
 	return ctrl.Result{RequeueAfter: r.Interval}, nil
 }

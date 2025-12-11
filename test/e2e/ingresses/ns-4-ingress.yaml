@@ -1,0 +1,22 @@
+# TLS without secretName
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ingress-4
+  namespace: ns-4
+spec:
+  ingressClassName: nginx
+  tls:
+  - hosts:
+      - https-example-4.foo.com
+  rules:
+  - host: https-example-4.foo.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: nginx-4
+            port:
+              number: 80

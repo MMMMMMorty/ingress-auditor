@@ -1,0 +1,23 @@
+# TLS with secret but secret does not define
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ingress-1
+  namespace: ns-1
+spec:
+  ingressClassName: nginx
+  tls:
+  - hosts:
+      - https-example-1.foo.com
+    secretName: secret-tls
+  rules:
+  - host: https-example-1.foo.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: nginx-1
+            port:
+              number: 80
