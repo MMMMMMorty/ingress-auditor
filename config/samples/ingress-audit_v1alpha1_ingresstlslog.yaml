@@ -6,4 +6,8 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
   name: ingresstlslog-sample
 spec:
-  # TODO(user): Add fields here
+  generationTimestamp: "2025-12-12T00:00:00Z"
+  ingressName: ingress-example
+  level: Error
+  message: the secretName does not define in ingress
+  namespace: ns-example

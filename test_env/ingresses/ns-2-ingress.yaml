@@ -1,4 +1,4 @@
-# TLS with secret but secret crt with wrong crt
+# TLS with secret but secret crt with wrong host
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
