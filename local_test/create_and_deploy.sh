@@ -7,6 +7,9 @@ minikube start
 minikube addons enable ingress
 # Remove the old ingress auditor
 make uninstall
+for i in {1..5}; do
+    kubectl delete ns ns-$i
+done
 # generate files
 make manifests
 make generate
