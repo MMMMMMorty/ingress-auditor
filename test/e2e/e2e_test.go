@@ -78,15 +78,6 @@ var _ = Describe("Manager", Ordered, func() {
 		_, err = utils.Run(cmd)
 		Expect(err).NotTo(HaveOccurred(), "Failed to deploy the controller-manager")
 
-		// By("deploying ingress-nginx controller")
-		// cmd = exec.Command(
-		// 	"bash", "-c",
-		// 	"https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/deploy/static/provider/kind/deploy.yaml",
-		// )
-
-		// _, err = utils.Run(cmd)
-		// Expect(err).NotTo(HaveOccurred(), "Failed to deploy the ingress-nginx controller")
-
 		By("waiting up to 3 minutes for ingress-nginx controller to be ready")
 		cmd = exec.Command(
 			"kubectl", "wait", "--namespace", "ingress-nginx",
@@ -154,13 +145,6 @@ var _ = Describe("Manager", Ordered, func() {
 		By("removing manager namespace")
 		cmd = exec.Command("kubectl", "delete", "ns", namespace)
 		_, _ = utils.Run(cmd)
-
-		// By("removing ingress-nginx controller")
-		// cmd = exec.Command(
-		// 	"kubectl", "delete", "-f",
-		// 	"https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/deploy/static/provider/kind/deploy.yaml",
-		// )
-		// _, _ = utils.Run(cmd)
 
 		// define deleteSecrets function
 		deleteSecret := func(ns string) {
@@ -349,7 +333,7 @@ var _ = Describe("Manager", Ordered, func() {
 
 		// +kubebuilder:scaffold:e2e-webhooks-checks
 
-		// TODO: Customize the e2e test suite with scenarios specific to your project.
+		// Customize the e2e test suite with scenarios specific to your project.
 		// Consider applying sample/CR(s) and check their status and/or verifying
 		// the reconciliation by using the metrics, i.e.:
 		// metricsOutput, err := getMetricsOutput()
@@ -453,8 +437,6 @@ var _ = Describe("Manager", Ordered, func() {
 					g.Expect(err).NotTo(HaveOccurred(), "Failed to get message from ingresstlslog %s", output)
 					errType := results[fmt.Sprintf("ns-%d", i)]
 					g.Expect(output).To(ContainSubstring(errType.Error()))
-					// every time one test get verified, sleep 30s?
-					// time.Sleep(30 * time.Second)
 				}
 			}
 
@@ -464,6 +446,7 @@ var _ = Describe("Manager", Ordered, func() {
 			verifyNS5success := func(g Gomega) {
 				cmd := exec.Command("kubectl", "logs", controllerPodName, "-n", namespace)
 				output, err := utils.Run(cmd)
+				fmt.Println(output)
 
 				lines := strings.Split(output, "\n")
 
@@ -482,113 +465,7 @@ var _ = Describe("Manager", Ordered, func() {
 			}
 
 			Eventually(verifyNS5success, 20*time.Minute, time.Second).Should(Succeed())
-
-			// TODO: add ingresses
-
 		})
-
-		// It("test if checking ingress 1 fails for fetching secret", func() {
-		// 	cmd := exec.Command("kubectl", "get",
-		// 		"pods", "-l", "control-plane=controller-manager",
-		// 		"-o", "go-template={{ range .items }}"+
-		// 			"{{ if not .metadata.deletionTimestamp }}"+
-		// 			"{{ .metadata.name }}"+
-		// 			"{{ \"\\n\" }}{{ end }}{{ end }}",
-		// 		"-n", namespace,
-		// 	)
-
-		// 	podOutput, err := utils.Run(cmd)
-		// 	Expect(err).NotTo(HaveOccurred(), "Failed to retrieve controller-manager pod information")
-		// 	podNames := utils.GetNonEmptyLines(podOutput)
-		// 	Expect(podNames).To(HaveLen(1), "expected 1 controller pod running")
-		// 	controllerPodName = podNames[0]
-		// 	Expect(controllerPodName).To(ContainSubstring("controller-manager"))
-
-		// 	// TODO: add ingresses
-
-		// })
-
-		// It("test if checking ingress 2 fails for wrong host in crt", func() {
-		// 	cmd := exec.Command("kubectl", "get",
-		// 		"pods", "-l", "control-plane=controller-manager",
-		// 		"-o", "go-template={{ range .items }}"+
-		// 			"{{ if not .metadata.deletionTimestamp }}"+
-		// 			"{{ .metadata.name }}"+
-		// 			"{{ \"\\n\" }}{{ end }}{{ end }}",
-		// 		"-n", namespace,
-		// 	)
-
-		// 	podOutput, err := utils.Run(cmd)
-		// 	Expect(err).NotTo(HaveOccurred(), "Failed to retrieve controller-manager pod information")
-		// 	podNames := utils.GetNonEmptyLines(podOutput)
-		// 	Expect(podNames).To(HaveLen(1), "expected 1 controller pod running")
-		// 	controllerPodName = podNames[0]
-		// 	Expect(controllerPodName).To(ContainSubstring("controller-manager"))
-
-		// 	// TODO: add ingresses
-
-		// })
-
-		// It("test if checking ingress 3 fails for crt only with CN but without SAN", func() {
-		// 	cmd := exec.Command("kubectl", "get",
-		// 		"pods", "-l", "control-plane=controller-manager",
-		// 		"-o", "go-template={{ range .items }}"+
-		// 			"{{ if not .metadata.deletionTimestamp }}"+
-		// 			"{{ .metadata.name }}"+
-		// 			"{{ \"\\n\" }}{{ end }}{{ end }}",
-		// 		"-n", namespace,
-		// 	)
-
-		// 	podOutput, err := utils.Run(cmd)
-		// 	Expect(err).NotTo(HaveOccurred(), "Failed to retrieve controller-manager pod information")
-		// 	podNames := utils.GetNonEmptyLines(podOutput)
-		// 	Expect(podNames).To(HaveLen(1), "expected 1 controller pod running")
-		// 	controllerPodName = podNames[0]
-		// 	Expect(controllerPodName).To(ContainSubstring("controller-manager"))
-
-		// 	// TODO: add ingresses
-
-		// })
-
-		// It("test if checking ingress 4 fails for secretName field does not define in ingress", func() {
-		// 	cmd := exec.Command("kubectl", "get",
-		// 		"pods", "-l", "control-plane=controller-manager",
-		// 		"-o", "go-template={{ range .items }}"+
-		// 			"{{ if not .metadata.deletionTimestamp }}"+
-		// 			"{{ .metadata.name }}"+
-		// 			"{{ \"\\n\" }}{{ end }}{{ end }}",
-		// 		"-n", namespace,
-		// 	)
-
-		// 	podOutput, err := utils.Run(cmd)
-		// 	Expect(err).NotTo(HaveOccurred(), "Failed to retrieve controller-manager pod information")
-		// 	podNames := utils.GetNonEmptyLines(podOutput)
-		// 	Expect(podNames).To(HaveLen(1), "expected 1 controller pod running")
-		// 	controllerPodName = podNames[0]
-		// 	Expect(controllerPodName).To(ContainSubstring("controller-manager"))
-
-		// 	// TODO: add ingresses
-
-		// })
-
-		// It("test if checking ingress 5 passes", func() {
-		// 	cmd := exec.Command("kubectl", "get",
-		// 		"pods", "-l", "control-plane=controller-manager",
-		// 		"-o", "go-template={{ range .items }}"+
-		// 			"{{ if not .metadata.deletionTimestamp }}"+
-		// 			"{{ .metadata.name }}"+
-		// 			"{{ \"\\n\" }}{{ end }}{{ end }}",
-		// 		"-n", namespace,
-		// 	)
-
-		// 	podOutput, err := utils.Run(cmd)
-		// 	Expect(err).NotTo(HaveOccurred(), "Failed to retrieve controller-manager pod information")
-		// 	podNames := utils.GetNonEmptyLines(podOutput)
-		// 	Expect(podNames).To(HaveLen(1), "expected 1 controller pod running")
-		// 	controllerPodName = podNames[0]
-		// 	Expect(controllerPodName).To(ContainSubstring("controller-manager"))
-		// 	// continue tmrw
-		// })
 	})
 })
 

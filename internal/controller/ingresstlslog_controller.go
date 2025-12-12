@@ -55,8 +55,8 @@ type IngressTLSLogReconciler struct {
 	IngressUpdateTimeMap map[string]time.Time
 }
 
-// ingressAuditorNamespace where the project is deployed in
 const (
+	// ingressAuditorNamespace where the project is deployed in
 	ingressAuditorNamespace = "ingress-auditor-system"
 	ErrLogLevel             = "Error"
 )
