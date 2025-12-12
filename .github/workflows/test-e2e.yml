@@ -17,14 +17,22 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: Install the latest version of kind
+      - name: Install the latest version of Minikube
         run: |
-          curl -Lo ./kind https://kind.sigs.k8s.io/dl/latest/kind-linux-$(go env GOARCH)
-          chmod +x ./kind
-          sudo mv ./kind /usr/local/bin/kind
+          curl -LO https://github.com/kubernetes/minikube/releases/latest/download/minikube-linux-amd64
+          sudo install minikube-linux-amd64 /usr/local/bin/minikube && rm minikube-linux-amd64
 
-      - name: Verify kind installation
-        run: kind version
+      - name: Verify Minikube installation
+        run: minikube version
+
+      - name: Install the latest version of get_helm
+        run: |
+          curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-4
+          chmod +x get_helm.sh
+          ./get_helm.sh
+
+      - name: Verify helm installation
+        run: helm version
 
       - name: Running Test e2e
         run: |

@@ -21,11 +21,12 @@ package e2e
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -45,6 +46,9 @@ const metricsServiceName = "ingress-auditor-controller-manager-metrics-service"
 
 // metricsRoleBindingName is the name of the RBAC that will be created to allow get the metrics data
 const metricsRoleBindingName = "ingress-auditor-metrics-binding"
+
+// namespaceNumber is the number of test namespaces
+const namespaceNumber = 5
 
 var _ = Describe("Manager", Ordered, func() {
 	var controllerPodName string
@@ -74,25 +78,27 @@ var _ = Describe("Manager", Ordered, func() {
 		_, err = utils.Run(cmd)
 		Expect(err).NotTo(HaveOccurred(), "Failed to deploy the controller-manager")
 
-		By("deploying ingress-nginx controller")
-		_, err = exec.Command(
-			"kubectl", "apply", "-f",
-			"https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/deploy/static/provider/kind/deploy.yaml",
-		).CombinedOutput()
-		Expect(err).NotTo(HaveOccurred())
+		// By("deploying ingress-nginx controller")
+		// cmd = exec.Command(
+		// 	"bash", "-c",
+		// 	"https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/deploy/static/provider/kind/deploy.yaml",
+		// )
+
+		// _, err = utils.Run(cmd)
+		// Expect(err).NotTo(HaveOccurred(), "Failed to deploy the ingress-nginx controller")
 
 		By("waiting up to 3 minutes for ingress-nginx controller to be ready")
 		cmd = exec.Command(
 			"kubectl", "wait", "--namespace", "ingress-nginx",
 			"--for=condition=available", "--timeout=180s", "deployment/ingress-nginx-controller",
 		)
-		_, err = cmd.CombinedOutput()
+		_, err = utils.Run(cmd)
 		Expect(err).NotTo(HaveOccurred())
 
 		// Creates my own environment for testing
 		// Create 5 ns and create service expose port 80
 		By("creating tetsting namespace")
-		for i := 1; i <= 5; i++ {
+		for i := 1; i <= namespaceNumber; i++ {
 			ns := fmt.Sprintf("ns-%d", i)
 			dep := fmt.Sprintf("nginx-%d", i)
 
@@ -112,29 +118,22 @@ var _ = Describe("Manager", Ordered, func() {
 		// define createSecret function to create TLS secrets
 		createSecret := func(ns, certPath, keyPath string) {
 			By("creating secret in " + ns)
-			certData, err := ioutil.ReadFile(certPath)
-			if err != nil {
-				return err
-			}
 
-			keyData, err := ioutil.ReadFile(keyPath)
-			if err != nil {
-				return err
-			}
-
-			_, err := exec.Command(
+			cmd = exec.Command(
 				"kubectl", "create", "secret", "tls", "secret-tls",
-				"--cert="+crt,
-				"--key="+key,
+				"--cert="+certPath,
+				"--key="+keyPath,
 				"-n", ns,
-			).CombinedOutput()
+			)
+
+			_, err := utils.Run(cmd)
 			Expect(err).NotTo(HaveOccurred())
 		}
 
 		// creates 3 TLS secrets
-		createSecret("ns-2", "./tls/tls-2.crt", "./tls/tls-2.key")
-		createSecret("ns-3", "./tls/tls-3.crt", "./tls/tls-3.key")
-		createSecret("ns-5", "./tls/tls-5.crt", "./tls/tls-5.key")
+		createSecret("ns-2", "test/e2e/tls/tls-2.crt", "test/e2e/tls/tls-2.key")
+		createSecret("ns-3", "test/e2e/tls/tls-3.crt", "test/e2e/tls/tls-3.key")
+		createSecret("ns-5", "test/e2e/tls/tls-5.crt", "test/e2e/tls/tls-5.key")
 	})
 
 	// After all tests have been executed, clean up by undeploying the controller, uninstalling CRDs,
@@ -156,12 +155,12 @@ var _ = Describe("Manager", Ordered, func() {
 		cmd = exec.Command("kubectl", "delete", "ns", namespace)
 		_, _ = utils.Run(cmd)
 
-		By("removing ingress-nginx controller")
-		_, err := exec.Command(
-			"kubectl", "delete", "-f",
-			"https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/deploy/static/provider/kind/deploy.yaml",
-		).CombinedOutput()
-		Expect(err).NotTo(HaveOccurred())
+		// By("removing ingress-nginx controller")
+		// cmd = exec.Command(
+		// 	"kubectl", "delete", "-f",
+		// 	"https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/deploy/static/provider/kind/deploy.yaml",
+		// )
+		// _, _ = utils.Run(cmd)
 
 		// define deleteSecrets function
 		deleteSecret := func(ns string) {
@@ -360,6 +359,61 @@ var _ = Describe("Manager", Ordered, func() {
 		//    strings.ToLower(<Kind>),
 		// ))
 		It("test if checking ingress 1 fails for secret does not define", func() {
+			By("Creating 5 ingresses")
+			createIngress := func(g Gomega) {
+				for i := 1; i <= namespaceNumber; i++ {
+					cmd := exec.Command("kubectl", "apply", "-f",
+						fmt.Sprintf("test/e2e/ingresses/ns-%d-ingress.yaml", i))
+					output, err := utils.Run(cmd)
+
+					Expect(err).NotTo(HaveOccurred(), "Failed to create custom ingress %s", output)
+
+					cmd = exec.Command(
+						"kubectl", "get", "ing", fmt.Sprintf("ingress-%d", i),
+						"-n", fmt.Sprintf("ns-%d", i),
+						"-o", "jsonpath={.status.loadBalancer.ingress[0].ip}",
+					)
+					output, err = utils.Run(cmd)
+					Expect(err).NotTo(HaveOccurred(), "Failed to read custom ingress %s", output)
+
+					ip := strings.TrimSpace(output)
+					hostname := fmt.Sprintf("https-example-%d.foo.com", i)
+					g.Expect(ip).NotTo(BeEmpty())
+
+					// delete the previous line and then add new line
+					cmd = exec.Command("bash", "-c",
+						fmt.Sprintf("sudo sed -i '/[[:space:]]%s$/d' /etc/hosts && echo '%s %s' | sudo tee -a /etc/hosts > /dev/null",
+							hostname, ip, hostname),
+					)
+					output, err = utils.Run(cmd)
+
+					Expect(err).NotTo(HaveOccurred(), "Failed to put host name mapping %s", output)
+
+					fmt.Printf("ingress is created in ns-%d", i)
+				}
+			}
+
+			Eventually(createIngress, 10*time.Minute, time.Second).Should(Succeed())
+
+			By("Creating result map")
+			// var ErrFetchIngree = errors.New("unable to fetch ingress")
+			var ErrSecretNameMissing = errors.New("the secretName does not define in ingress")
+			var ErrFetchSecret = errors.New("unable to fetch secret")
+			// var ErrCrtOrKeyMissing = errors.New("the crt or key does not exist in secret")
+			// var ErrHostsMissing = errors.New("the Hosts does not define in ingress")
+			var ErrTLSVerification = errors.New("TLS verification failed")
+			// var ErrHTTPRedirectMissing = errors.New("TLS is not used and redirect is not applied neither")
+			// var ErrCreateTLSLog = errors.New("failed to create new TLS log")
+
+			results := map[string]error{
+				"ns-1": ErrFetchSecret,
+				"ns-2": ErrTLSVerification,
+				"ns-3": ErrTLSVerification,
+				"ns-4": ErrSecretNameMissing,
+				"ns-5": nil,
+			}
+
+			By("Verifying the results")
 			cmd := exec.Command("kubectl", "get",
 				"pods", "-l", "control-plane=controller-manager",
 				"-o", "go-template={{ range .items }}"+
@@ -375,113 +429,168 @@ var _ = Describe("Manager", Ordered, func() {
 			Expect(podNames).To(HaveLen(1), "expected 1 controller pod running")
 			controllerPodName = podNames[0]
 			Expect(controllerPodName).To(ContainSubstring("controller-manager"))
+
+			verifyfailure := func(g Gomega) {
+				for i := 1; i <= namespaceNumber; i++ {
+					if i == 5 {
+						continue // manually skip ns-5, which will be verified later
+					}
+					cmd := exec.Command("sh", "-c",
+						fmt.Sprintf("kubectl get ingresstlslogs.ingress-audit.morty.dev -n %s | grep ns-%d-ingress-%d | awk '{print $1}'", namespace, i, i))
+					// kubectl get ingresstlslogs.ingress-audit.morty.dev -n ingress-auditor-system \
+					// -o json | jq -r '.items[] | select(.metadata.name | startswith("ns-1-ingress-1")) | .metadata.name'
+					output, err := utils.Run(cmd)
+					g.Expect(err).NotTo(HaveOccurred(), "Failed to get ingresstlslogs %s", output)
+					g.Expect(output).To(ContainSubstring(fmt.Sprintf("ns-%d-ingress-%d", i, i)))
+
+					tlslog := strings.TrimSpace(output)
+					cmd = exec.Command(
+						"kubectl", "get", "ingresstlslogs", tlslog,
+						"-n", namespace,
+						"-o", "jsonpath={.spec.message}",
+					)
+					output, err = utils.Run(cmd)
+					fmt.Println(output)
+					fmt.Println(err)
+					g.Expect(err).NotTo(HaveOccurred(), "Failed to get message from ingresstlslog %s", output)
+					errType := results[fmt.Sprintf("ns-%d", i)]
+					g.Expect(output).To(ContainSubstring(errType.Error()))
+					// every time one test get verified, sleep 30s?
+					// time.Sleep(30 * time.Second)
+				}
+			}
+
+			Eventually(verifyfailure, 10*time.Minute, time.Second).Should(Succeed())
+
+			verifyNS5success := func(g Gomega) {
+				cmd := exec.Command("kubectl", "logs", controllerPodName, "-n", namespace)
+				output, err := utils.Run(cmd)
+
+				lines := strings.Split(output, "\n")
+
+				count := 0
+
+				for _, line := range lines {
+					if strings.Contains(line, "Ingress ns-5/ingress-5 TLS ia applied correctly") {
+						count++
+						fmt.Println("Matched:", line)
+						break
+					}
+				}
+
+				g.Expect(err).NotTo(HaveOccurred())
+				// One of the lines contains `TLS ia applied correctly``
+				g.Expect(count).To(Equal(1))
+			}
+
+			Eventually(verifyNS5success, 10*time.Minute, time.Second).Should(Succeed())
 
 			// TODO: add ingresses
 
 		})
 
-		It("test if checking ingress 1 fails for fetching secret", func() {
-			cmd := exec.Command("kubectl", "get",
-				"pods", "-l", "control-plane=controller-manager",
-				"-o", "go-template={{ range .items }}"+
-					"{{ if not .metadata.deletionTimestamp }}"+
-					"{{ .metadata.name }}"+
-					"{{ \"\\n\" }}{{ end }}{{ end }}",
-				"-n", namespace,
-			)
+		// It("test if checking ingress 1 fails for fetching secret", func() {
+		// 	cmd := exec.Command("kubectl", "get",
+		// 		"pods", "-l", "control-plane=controller-manager",
+		// 		"-o", "go-template={{ range .items }}"+
+		// 			"{{ if not .metadata.deletionTimestamp }}"+
+		// 			"{{ .metadata.name }}"+
+		// 			"{{ \"\\n\" }}{{ end }}{{ end }}",
+		// 		"-n", namespace,
+		// 	)
 
-			podOutput, err := utils.Run(cmd)
-			Expect(err).NotTo(HaveOccurred(), "Failed to retrieve controller-manager pod information")
-			podNames := utils.GetNonEmptyLines(podOutput)
-			Expect(podNames).To(HaveLen(1), "expected 1 controller pod running")
-			controllerPodName = podNames[0]
-			Expect(controllerPodName).To(ContainSubstring("controller-manager"))
+		// 	podOutput, err := utils.Run(cmd)
+		// 	Expect(err).NotTo(HaveOccurred(), "Failed to retrieve controller-manager pod information")
+		// 	podNames := utils.GetNonEmptyLines(podOutput)
+		// 	Expect(podNames).To(HaveLen(1), "expected 1 controller pod running")
+		// 	controllerPodName = podNames[0]
+		// 	Expect(controllerPodName).To(ContainSubstring("controller-manager"))
 
-			// TODO: add ingresses
+		// 	// TODO: add ingresses
 
-		})
+		// })
 
-		It("test if checking ingress 2 fails for wrong host in crt", func() {
-			cmd := exec.Command("kubectl", "get",
-				"pods", "-l", "control-plane=controller-manager",
-				"-o", "go-template={{ range .items }}"+
-					"{{ if not .metadata.deletionTimestamp }}"+
-					"{{ .metadata.name }}"+
-					"{{ \"\\n\" }}{{ end }}{{ end }}",
-				"-n", namespace,
-			)
+		// It("test if checking ingress 2 fails for wrong host in crt", func() {
+		// 	cmd := exec.Command("kubectl", "get",
+		// 		"pods", "-l", "control-plane=controller-manager",
+		// 		"-o", "go-template={{ range .items }}"+
+		// 			"{{ if not .metadata.deletionTimestamp }}"+
+		// 			"{{ .metadata.name }}"+
+		// 			"{{ \"\\n\" }}{{ end }}{{ end }}",
+		// 		"-n", namespace,
+		// 	)
 
-			podOutput, err := utils.Run(cmd)
-			Expect(err).NotTo(HaveOccurred(), "Failed to retrieve controller-manager pod information")
-			podNames := utils.GetNonEmptyLines(podOutput)
-			Expect(podNames).To(HaveLen(1), "expected 1 controller pod running")
-			controllerPodName = podNames[0]
-			Expect(controllerPodName).To(ContainSubstring("controller-manager"))
+		// 	podOutput, err := utils.Run(cmd)
+		// 	Expect(err).NotTo(HaveOccurred(), "Failed to retrieve controller-manager pod information")
+		// 	podNames := utils.GetNonEmptyLines(podOutput)
+		// 	Expect(podNames).To(HaveLen(1), "expected 1 controller pod running")
+		// 	controllerPodName = podNames[0]
+		// 	Expect(controllerPodName).To(ContainSubstring("controller-manager"))
 
-			// TODO: add ingresses
+		// 	// TODO: add ingresses
 
-		})
+		// })
 
-		It("test if checking ingress 3 fails for crt only with CN but without SAN", func() {
-			cmd := exec.Command("kubectl", "get",
-				"pods", "-l", "control-plane=controller-manager",
-				"-o", "go-template={{ range .items }}"+
-					"{{ if not .metadata.deletionTimestamp }}"+
-					"{{ .metadata.name }}"+
-					"{{ \"\\n\" }}{{ end }}{{ end }}",
-				"-n", namespace,
-			)
+		// It("test if checking ingress 3 fails for crt only with CN but without SAN", func() {
+		// 	cmd := exec.Command("kubectl", "get",
+		// 		"pods", "-l", "control-plane=controller-manager",
+		// 		"-o", "go-template={{ range .items }}"+
+		// 			"{{ if not .metadata.deletionTimestamp }}"+
+		// 			"{{ .metadata.name }}"+
+		// 			"{{ \"\\n\" }}{{ end }}{{ end }}",
+		// 		"-n", namespace,
+		// 	)
 
-			podOutput, err := utils.Run(cmd)
-			Expect(err).NotTo(HaveOccurred(), "Failed to retrieve controller-manager pod information")
-			podNames := utils.GetNonEmptyLines(podOutput)
-			Expect(podNames).To(HaveLen(1), "expected 1 controller pod running")
-			controllerPodName = podNames[0]
-			Expect(controllerPodName).To(ContainSubstring("controller-manager"))
+		// 	podOutput, err := utils.Run(cmd)
+		// 	Expect(err).NotTo(HaveOccurred(), "Failed to retrieve controller-manager pod information")
+		// 	podNames := utils.GetNonEmptyLines(podOutput)
+		// 	Expect(podNames).To(HaveLen(1), "expected 1 controller pod running")
+		// 	controllerPodName = podNames[0]
+		// 	Expect(controllerPodName).To(ContainSubstring("controller-manager"))
 
-			// TODO: add ingresses
+		// 	// TODO: add ingresses
 
-		})
+		// })
 
-		It("test if checking ingress 4 fails for secretName field does not define in ingress", func() {
-			cmd := exec.Command("kubectl", "get",
-				"pods", "-l", "control-plane=controller-manager",
-				"-o", "go-template={{ range .items }}"+
-					"{{ if not .metadata.deletionTimestamp }}"+
-					"{{ .metadata.name }}"+
-					"{{ \"\\n\" }}{{ end }}{{ end }}",
-				"-n", namespace,
-			)
+		// It("test if checking ingress 4 fails for secretName field does not define in ingress", func() {
+		// 	cmd := exec.Command("kubectl", "get",
+		// 		"pods", "-l", "control-plane=controller-manager",
+		// 		"-o", "go-template={{ range .items }}"+
+		// 			"{{ if not .metadata.deletionTimestamp }}"+
+		// 			"{{ .metadata.name }}"+
+		// 			"{{ \"\\n\" }}{{ end }}{{ end }}",
+		// 		"-n", namespace,
+		// 	)
 
-			podOutput, err := utils.Run(cmd)
-			Expect(err).NotTo(HaveOccurred(), "Failed to retrieve controller-manager pod information")
-			podNames := utils.GetNonEmptyLines(podOutput)
-			Expect(podNames).To(HaveLen(1), "expected 1 controller pod running")
-			controllerPodName = podNames[0]
-			Expect(controllerPodName).To(ContainSubstring("controller-manager"))
+		// 	podOutput, err := utils.Run(cmd)
+		// 	Expect(err).NotTo(HaveOccurred(), "Failed to retrieve controller-manager pod information")
+		// 	podNames := utils.GetNonEmptyLines(podOutput)
+		// 	Expect(podNames).To(HaveLen(1), "expected 1 controller pod running")
+		// 	controllerPodName = podNames[0]
+		// 	Expect(controllerPodName).To(ContainSubstring("controller-manager"))
 
-			// TODO: add ingresses
+		// 	// TODO: add ingresses
 
-		})
+		// })
 
-		It("test if checking ingress 5 passes", func() {
-			cmd := exec.Command("kubectl", "get",
-				"pods", "-l", "control-plane=controller-manager",
-				"-o", "go-template={{ range .items }}"+
-					"{{ if not .metadata.deletionTimestamp }}"+
-					"{{ .metadata.name }}"+
-					"{{ \"\\n\" }}{{ end }}{{ end }}",
-				"-n", namespace,
-			)
+		// It("test if checking ingress 5 passes", func() {
+		// 	cmd := exec.Command("kubectl", "get",
+		// 		"pods", "-l", "control-plane=controller-manager",
+		// 		"-o", "go-template={{ range .items }}"+
+		// 			"{{ if not .metadata.deletionTimestamp }}"+
+		// 			"{{ .metadata.name }}"+
+		// 			"{{ \"\\n\" }}{{ end }}{{ end }}",
+		// 		"-n", namespace,
+		// 	)
 
-			podOutput, err := utils.Run(cmd)
-			Expect(err).NotTo(HaveOccurred(), "Failed to retrieve controller-manager pod information")
-			podNames := utils.GetNonEmptyLines(podOutput)
-			Expect(podNames).To(HaveLen(1), "expected 1 controller pod running")
-			controllerPodName = podNames[0]
-			Expect(controllerPodName).To(ContainSubstring("controller-manager"))
-			// continue tmrw
-		})
+		// 	podOutput, err := utils.Run(cmd)
+		// 	Expect(err).NotTo(HaveOccurred(), "Failed to retrieve controller-manager pod information")
+		// 	podNames := utils.GetNonEmptyLines(podOutput)
+		// 	Expect(podNames).To(HaveLen(1), "expected 1 controller pod running")
+		// 	controllerPodName = podNames[0]
+		// 	Expect(controllerPodName).To(ContainSubstring("controller-manager"))
+		// 	// continue tmrw
+		// })
 	})
 })
 

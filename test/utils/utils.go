@@ -133,18 +133,20 @@ func IsCertManagerCRDsInstalled() bool {
 	return false
 }
 
-// LoadImageToKindClusterWithName loads a local docker image to the kind cluster
-func LoadImageToKindClusterWithName(name string) error {
-	cluster := defaultKindCluster
-	if v, ok := os.LookupEnv("KIND_CLUSTER"); ok {
-		cluster = v
+// LoadImageToMinikube loads a local docker image into the Minikube cluster.
+func LoadImageToMinikube(name string) error {
+	profile := "minikube"
+	if v, ok := os.LookupEnv("MINIKUBE_PROFILE"); ok {
+		profile = v
 	}
-	kindOptions := []string{"load", "docker-image", name, "--name", cluster}
-	kindBinary := defaultKindBinary
-	if v, ok := os.LookupEnv("KIND"); ok {
-		kindBinary = v
+
+	minikubeBinary := "minikube"
+	if v, ok := os.LookupEnv("MINIKUBE"); ok {
+		minikubeBinary = v
 	}
-	cmd := exec.Command(kindBinary, kindOptions...)
+
+	// minikube image load <image> -p <profile>
+	cmd := exec.Command(minikubeBinary, "image", "load", name, "-p", profile)
 	_, err := Run(cmd)
 	return err
 }

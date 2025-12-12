@@ -36,9 +36,13 @@ kubectl create secret tls secret-tls \
   --key=tls-5.key \
   -n ns-5
 
+# kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/deploy/static/provider/kind/deploy.yaml
+
 for i in {1..5}; do
     # create ingress
     kubectl apply -f ingresses/ns-$i-ingress.yaml
     ADDRESS=$(kubectl get ing ingress-$i -n ns-$i -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-    echo "$ADDRESS https-example-$i.foo.com" | sudo tee -a /etc/hosts
+    sudo sed -i "/[[:space:]]$i$/d" /etc/hosts && echo "$ADDRESS https-example-$i.foo.com" | sudo tee -a /etc/hosts
 done
+
+kubectl get ing ingress-2 -n ns-2

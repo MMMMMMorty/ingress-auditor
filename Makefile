@@ -61,34 +61,61 @@ vet: ## Run go vet against code.
 test: manifests generate fmt vet setup-envtest ## Run tests.
 	KUBEBUILDER_ASSETS="$(shell "$(ENVTEST)" use $(ENVTEST_K8S_VERSION) --bin-dir "$(LOCALBIN)" -p path)" go test $$(go list ./... | grep -v /e2e) -coverprofile cover.out
 
-# TODO(user): To use a different vendor for e2e tests, modify the setup under 'tests/e2e'.
+# To use a different vendor for e2e tests, modify the setup under 'tests/e2e'.
 # The default setup assumes Kind is pre-installed and builds/loads the Manager Docker image locally.
 # CertManager is installed by default; skip with:
 # - CERT_MANAGER_INSTALL_SKIP=true
-KIND_CLUSTER ?= ingress-auditor-test-e2e
+MINIKUBE ?= minikube
+MINIKUBE_PROFILE ?= ingress-auditor-test-e2e
 
 .PHONY: setup-test-e2e
-setup-test-e2e: ## Set up a Kind cluster for e2e tests if it does not exist
-	@command -v $(KIND) >/dev/null 2>&1 || { \
-		echo "Kind is not installed. Please install Kind manually."; \
+setup-test-e2e: ## Set up a Minikube cluster for e2e tests if it does not exist
+	@command -v $(MINIKUBE) >/dev/null 2>&1 || { \
+		echo "Minikube is not installed. Please install Minikube manually."; \
 		exit 1; \
 	}
-	@case "$$($(KIND) get clusters)" in \
-		*"$(KIND_CLUSTER)"*) \
-			echo "Kind cluster '$(KIND_CLUSTER)' already exists. Skipping creation." ;; \
-		*) \
-			echo "Creating Kind cluster '$(KIND_CLUSTER)'..."; \
-			$(KIND) create cluster --name $(KIND_CLUSTER) ;; \
-	esac
+	@if $(MINIKUBE) profile list | grep -q "^$(MINIKUBE_PROFILE)\s"; then \
+		echo "Minikube profile '$(MINIKUBE_PROFILE)' already exists. Skipping creation."; \
+	else \
+		echo "Creating Minikube profile '$(MINIKUBE_PROFILE)'..."; \
+		$(MINIKUBE) start -p $(MINIKUBE_PROFILE); \
+	fi
+
+.PHONY: install-ingress-nginx
+install-ingress-nginx:
+	
+	@echo "Enabling ingress addon for Minikube profile '$(MINIKUBE_PROFILE)'..."
+	@$(MINIKUBE) addons enable ingress -p $(MINIKUBE_PROFILE)
+
+	@echo "Minikube setup complete; cluster IP: $$($(MINIKUBE) ip -p $(MINIKUBE_PROFILE))"
+
+# 	@if [ -z "shell command -v helm 2>/dev/null" ]; then \
+# 		echo "helm not found! Please install Helm first."; \
+# 		exit 1; \
+# 	fi
+# 	@echo "Checking if ingress-nginx is installed..."
+# 	@if helm list -n ingress-nginx | grep -q ingress-nginx; then \
+# 		echo "ingress-nginx already installed"; \
+# 	else \
+# 		echo "Adding ingress-nginx repo"; \
+# 		helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx; \
+# 		helm repo update; \
+# 		echo "Installing ingress-nginx"; \
+# 		helm install ingress-nginx ingress-nginx/ingress-nginx --namespace ingress-nginx --create-namespace --set controller.service.type=LoadBalancer; \
+# 	fi
+	@echo "ingress-nginx setup complete"
+
 
 .PHONY: test-e2e
-test-e2e: setup-test-e2e manifests generate fmt vet ## Run the e2e tests. Expected an isolated environment using Kind.
-	KIND=$(KIND) KIND_CLUSTER=$(KIND_CLUSTER) go test -tags=e2e ./test/e2e/ -v -ginkgo.v
+test-e2e: setup-test-e2e install-ingress-nginx manifests generate fmt vet ## Run the e2e tests using Minikube
+	MINIKUBE=$(MINIKUBE) MINIKUBE_PROFILE=$(MINIKUBE_PROFILE) \
+		go test -tags=e2e ./test/e2e/ -v -ginkgo.v
 	$(MAKE) cleanup-test-e2e
 
 .PHONY: cleanup-test-e2e
-cleanup-test-e2e: ## Tear down the Kind cluster used for e2e tests
-	@$(KIND) delete cluster --name $(KIND_CLUSTER)
+cleanup-test-e2e: ## Tear down the Minikube profile used for e2e tests
+	@echo "Deleting Minikube profile '$(MINIKUBE_PROFILE)'..."
+	@$(MINIKUBE) delete -p $(MINIKUBE_PROFILE)
 
 .PHONY: lint
 lint: golangci-lint ## Run golangci-lint linter
@@ -109,7 +136,7 @@ build: manifests generate fmt vet ## Build manager binary.
 	go build -o bin/manager cmd/main.go
 
 .PHONY: run
-run: manifests generate fmt vet ## Run a controller from your host.
+run: manifests generate fmt vet ## Run a controller from your host. use <--interval-second=1800> to set interval
 	go run ./cmd/main.go
 
 # If you wish to build the manager image targeting other platforms you can use the --platform flag.
