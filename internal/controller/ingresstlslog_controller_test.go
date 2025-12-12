@@ -18,8 +18,10 @@ package controller
 
 import (
 	"context"
+	"os/exec"
 	"time"
 
+	"github.com/MMMMMMorty/ingress-auditor/test/utils"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	networkingv1 "k8s.io/api/networking/v1"
@@ -53,8 +55,17 @@ var _ = Describe("IngressTLSLog Controller", func() {
 		testIngressSuccess := &networkingv1.Ingress{}
 
 		BeforeEach(func() {
+			// namespace where the project is deployed in
+			const namespace = "ingress-auditor-system"
+
+			By("Creating ingress-auditor-system namespapce")
+
+			cmd := exec.Command("kubectl", "create", "ns", namespace)
+			_, err := utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred(), "Failed to create namespace")
+
 			By("creating the ingress resource for failure test")
-			err := k8sClient.Get(ctx, typeNamespacedNameFailure, testIngressFailure)
+			err = k8sClient.Get(ctx, typeNamespacedNameFailure, testIngressFailure)
 			if err != nil && errors.IsNotFound(err) {
 				resource := &networkingv1.Ingress{
 					ObjectMeta: metav1.ObjectMeta{
