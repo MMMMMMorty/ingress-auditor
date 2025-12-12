@@ -18,10 +18,8 @@ package controller
 
 import (
 	"context"
-	"os/exec"
 	"time"
 
-	"github.com/MMMMMMorty/ingress-auditor/test/utils"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	networkingv1 "k8s.io/api/networking/v1"
@@ -55,17 +53,8 @@ var _ = Describe("IngressTLSLog Controller", func() {
 		testIngressSuccess := &networkingv1.Ingress{}
 
 		BeforeEach(func() {
-			// namespace where the project is deployed in
-			const namespace = "ingress-auditor-system"
-
-			By("Creating ingress-auditor-system namespapce")
-
-			cmd := exec.Command("kubectl", "create", "ns", namespace)
-			_, err := utils.Run(cmd)
-			Expect(err).NotTo(HaveOccurred(), "Failed to create namespace")
-
 			By("creating the ingress resource for failure test")
-			err = k8sClient.Get(ctx, typeNamespacedNameFailure, testIngressFailure)
+			err := k8sClient.Get(ctx, typeNamespacedNameFailure, testIngressFailure)
 			if err != nil && errors.IsNotFound(err) {
 				resource := &networkingv1.Ingress{
 					ObjectMeta: metav1.ObjectMeta{
@@ -158,7 +147,7 @@ var _ = Describe("IngressTLSLog Controller", func() {
 			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
 		})
 		It("should be failed to reconcile the resource", func() {
-			By("Reconciling the ingress with HTTP but no redirect")
+			By("Reconciling the ingress with creating TLS log failure")
 			controllerReconciler := &IngressTLSLogReconciler{
 				Client:               k8sClient,
 				Scheme:               k8sClient.Scheme(),
@@ -168,6 +157,26 @@ var _ = Describe("IngressTLSLog Controller", func() {
 			}
 
 			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedNameFailure,
+			})
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("failed to create new TLS log"))
+
+			// namespace where the project is deployed in
+			const namespace = "ingress-auditor-system"
+
+			By("Creating ingress-auditor-system namespapce")
+			// Create a Namespace object
+			namespaceResource := &corev1.Namespace{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: namespace,
+				},
+			}
+
+			Expect(k8sClient.Create(ctx, namespaceResource)).To(Succeed())
+
+			By("Reconciling the ingress with HTTP but no redirect")
+			_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: typeNamespacedNameFailure,
 			})
 			Expect(err).To(HaveOccurred())
