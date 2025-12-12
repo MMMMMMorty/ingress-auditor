@@ -22,6 +22,7 @@ package e2e
 import (
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -109,8 +110,18 @@ var _ = Describe("Manager", Ordered, func() {
 		}
 
 		// define createSecret function to create TLS secrets
-		createSecret := func(ns, crt, key string) {
+		createSecret := func(ns, certPath, keyPath string) {
 			By("creating secret in " + ns)
+			certData, err := ioutil.ReadFile(certPath)
+			if err != nil {
+				return err
+			}
+
+			keyData, err := ioutil.ReadFile(keyPath)
+			if err != nil {
+				return err
+			}
+
 			_, err := exec.Command(
 				"kubectl", "create", "secret", "tls", "secret-tls",
 				"--cert="+crt,

@@ -230,7 +230,7 @@ func checkTLS(log logr.Logger, crtPEM, keyPEM []byte, host string) error {
 	// Load client certificate
 	cert, err := tls.X509KeyPair(crtPEM, keyPEM)
 	if err != nil {
-		panic(fmt.Errorf("failed to load cert/key: %v", err))
+		return fmt.Errorf("failed to load cert/key: %v", err)
 	}
 
 	// Root CA pool
@@ -257,6 +257,7 @@ func checkTLS(log logr.Logger, crtPEM, keyPEM []byte, host string) error {
 	return nil
 }
 
+// handleIngressError handles different types of err when checking the TLS status of ingress
 func (r *IngressTLSLogReconciler) handleIngressError(
 	ctx context.Context,
 	ingressNs, ingressName, ingressNamespacedName string,

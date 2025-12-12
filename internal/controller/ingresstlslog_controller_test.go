@@ -93,6 +93,9 @@ var _ = Describe("IngressTLSLog Controller", func() {
 				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
 			}
 
+			err = k8sClient.Get(ctx, typeNamespacedNameFailure, testIngressFailure)
+			Expect(err).NotTo(HaveOccurred())
+
 			By("creating the ingress resource for successful test")
 			err = k8sClient.Get(ctx, typeNamespacedNameSuccess, testIngressSuccess)
 			if err != nil && errors.IsNotFound(err) {
@@ -135,6 +138,9 @@ var _ = Describe("IngressTLSLog Controller", func() {
 				}
 				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
 			}
+
+			err = k8sClient.Get(ctx, typeNamespacedNameSuccess, testIngressSuccess)
+			Expect(err).NotTo(HaveOccurred())
 		})
 
 		AfterEach(func() {
@@ -185,7 +191,11 @@ var _ = Describe("IngressTLSLog Controller", func() {
 			By("Patching the ingress with empty TLS resource")
 			patch := client.MergeFrom(testIngressFailure.DeepCopy())
 
-			testIngressFailure.Spec.TLS[0].Hosts[0] = "example.com"
+			tlsEntry := networkingv1.IngressTLS{
+				Hosts: []string{"example.com"},
+			}
+
+			testIngressFailure.Spec.TLS = append(testIngressFailure.Spec.TLS, tlsEntry)
 
 			err = k8sClient.Patch(ctx, testIngressFailure, patch)
 			Expect(err).NotTo(HaveOccurred())
@@ -218,7 +228,6 @@ var _ = Describe("IngressTLSLog Controller", func() {
 					Name:      "test-secret",
 					Namespace: "default",
 				},
-				Type: corev1.SecretTypeTLS,
 				Data: map[string][]byte{
 					"test-data": []byte("test-crt"),
 				},
@@ -238,9 +247,16 @@ var _ = Describe("IngressTLSLog Controller", func() {
 			err = k8sClient.Delete(ctx, secret)
 			Expect(err).NotTo(HaveOccurred())
 
-			secret.Data = map[string][]byte{
-				"tls.crt": []byte("test-crt"),
-				"tls.key": []byte("test-key"),
+			secret = &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-secret",
+					Namespace: "default",
+				},
+				Type: corev1.SecretTypeTLS,
+				Data: map[string][]byte{
+					"tls.crt": []byte("test-crt"),
+					"tls.key": []byte("test-key"),
+				},
 			}
 
 			err = k8sClient.Create(ctx, secret)
