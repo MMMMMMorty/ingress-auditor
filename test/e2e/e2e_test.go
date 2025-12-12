@@ -389,7 +389,7 @@ var _ = Describe("Manager", Ordered, func() {
 
 					Expect(err).NotTo(HaveOccurred(), "Failed to put host name mapping %s", output)
 
-					fmt.Printf("ingress is created in ns-%d", i)
+					fmt.Printf("ingress is created in ns-%d\n", i)
 				}
 			}
 
@@ -450,8 +450,6 @@ var _ = Describe("Manager", Ordered, func() {
 						"-o", "jsonpath={.spec.message}",
 					)
 					output, err = utils.Run(cmd)
-					fmt.Println(output)
-					fmt.Println(err)
 					g.Expect(err).NotTo(HaveOccurred(), "Failed to get message from ingresstlslog %s", output)
 					errType := results[fmt.Sprintf("ns-%d", i)]
 					g.Expect(output).To(ContainSubstring(errType.Error()))
@@ -473,7 +471,6 @@ var _ = Describe("Manager", Ordered, func() {
 				for _, line := range lines {
 					if strings.Contains(line, "Ingress ns-5/ingress-5 TLS ia applied correctly") {
 						count++
-						fmt.Println("Matched:", line)
 						break
 					}
 				}
