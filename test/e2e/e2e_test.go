@@ -413,7 +413,7 @@ var _ = Describe("Manager", Ordered, func() {
 				"ns-5": nil,
 			}
 
-			By("Verifying the results")
+			By("Verifying the failure results")
 			cmd := exec.Command("kubectl", "get",
 				"pods", "-l", "control-plane=controller-manager",
 				"-o", "go-template={{ range .items }}"+
@@ -460,6 +460,7 @@ var _ = Describe("Manager", Ordered, func() {
 
 			Eventually(verifyfailure, 10*time.Minute, time.Second).Should(Succeed())
 
+			By("Verifying the successful results")
 			verifyNS5success := func(g Gomega) {
 				cmd := exec.Command("kubectl", "logs", controllerPodName, "-n", namespace)
 				output, err := utils.Run(cmd)
