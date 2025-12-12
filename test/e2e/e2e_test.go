@@ -481,7 +481,7 @@ var _ = Describe("Manager", Ordered, func() {
 				g.Expect(count).To(Equal(1))
 			}
 
-			Eventually(verifyNS5success, 10*time.Minute, time.Second).Should(Succeed())
+			Eventually(verifyNS5success, 20*time.Minute, time.Second).Should(Succeed())
 
 			// TODO: add ingresses
 

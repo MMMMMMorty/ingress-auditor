@@ -276,3 +276,18 @@ chatgpt prompts:
 - Why choose minkube over kind?
 
   Answer: for TLS verification test, ingress with address is needed, when using kind, ingress ADDRESS will always be empty unless you install MetalLB. For minikube, the solution is eaiser.
+
+- Why do I choose framework over non-framework, and why do I choose Kubebuilder
+
+Non-framework: high control, flexible, adjustable, but I need to handle a lot of things myself. If I make a mistake in any part, it can cause vulnerability.
+Framework: procvide scaffolding, tooling, and established patterns that accelerate development, manage boilerplate, and ensure best practices.
+
+Since I am doing a simple project, a framework will make my job eaiser.
+
+Two mainstream operators:
+
+operator-sdk: Multiple languages, support for Ansible or Helm. Focus on full-lifecycle of operator.
+
+kubebuilder: Primarily Golang and Kubernetes native based. Can be extensively used in operator-sdk.
+
+They both make use of controller-runtime and have the same basic layout. Consider I want to use golang to create a simple operator for specific function, kubebuilder seems to be a better option.
