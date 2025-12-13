@@ -1,0 +1,21 @@
+# Wihtout TLS but with redirect
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ingress-6
+  namespace: ns-6
+  annotations:
+    nginx.ingress.kubernetes.io/permanent-redirect: "https://www.google.com"
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: https-example-6.foo.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: nginx-6
+            port:
+              number: 80

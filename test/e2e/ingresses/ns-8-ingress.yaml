@@ -1,0 +1,21 @@
+# ingress without hosts
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ingress-8
+  namespace: ns-8
+spec:
+  ingressClassName: nginx
+  tls:
+  - secretName: secret-tls
+  rules:
+  - host: https-example-8.foo.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: nginx-8
+            port:
+              number: 80

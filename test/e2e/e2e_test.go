@@ -48,7 +48,7 @@ const metricsServiceName = "ingress-auditor-controller-manager-metrics-service"
 const metricsRoleBindingName = "ingress-auditor-metrics-binding"
 
 // namespaceNumber is the number of test namespaces
-const namespaceNumber = 5
+const namespaceNumber = 8
 
 var _ = Describe("Manager", Ordered, func() {
 	var controllerPodName string
@@ -125,6 +125,7 @@ var _ = Describe("Manager", Ordered, func() {
 		createSecret("ns-2", "test/e2e/tls/tls-2.crt", "test/e2e/tls/tls-2.key")
 		createSecret("ns-3", "test/e2e/tls/tls-3.crt", "test/e2e/tls/tls-3.key")
 		createSecret("ns-5", "test/e2e/tls/tls-5.crt", "test/e2e/tls/tls-5.key")
+		createSecret("ns-8", "test/e2e/tls/tls-8.crt", "test/e2e/tls/tls-8.key")
 	})
 
 	// After all tests have been executed, clean up by undeploying the controller, uninstalling CRDs,
@@ -156,6 +157,7 @@ var _ = Describe("Manager", Ordered, func() {
 		deleteSecret("ns-2")
 		deleteSecret("ns-3")
 		deleteSecret("ns-5")
+		deleteSecret("ns-8")
 
 	})
 
@@ -384,9 +386,9 @@ var _ = Describe("Manager", Ordered, func() {
 			var ErrSecretNameMissing = errors.New("the secretName does not define in ingress")
 			var ErrFetchSecret = errors.New("unable to fetch secret")
 			// var ErrCrtOrKeyMissing = errors.New("the crt or key does not exist in secret")
-			// var ErrHostsMissing = errors.New("the Hosts does not define in ingress")
+			var ErrHostsMissing = errors.New("the Hosts does not define in ingress")
 			var ErrTLSVerification = errors.New("TLS verification failed")
-			// var ErrHTTPRedirectMissing = errors.New("TLS is not used and redirect is not applied neither")
+			var ErrHTTPRedirectMissing = errors.New("TLS is not used and redirect is not applied neither")
 			// var ErrCreateTLSLog = errors.New("failed to create new TLS log")
 
 			results := map[string]error{
@@ -395,6 +397,9 @@ var _ = Describe("Manager", Ordered, func() {
 				"ns-3": ErrTLSVerification,
 				"ns-4": ErrSecretNameMissing,
 				"ns-5": nil,
+				"ns-6": nil,
+				"ns-7": ErrHTTPRedirectMissing,
+				"ns-8": ErrHostsMissing,
 			}
 
 			By("Verifying the failure results")
@@ -416,8 +421,8 @@ var _ = Describe("Manager", Ordered, func() {
 
 			verifyfailure := func(g Gomega) {
 				for i := 1; i <= namespaceNumber; i++ {
-					if i == 5 {
-						continue // manually skip ns-5, which will be verified later
+					if i == 5 || i == 6 {
+						continue // manually skip successful cases, which will be verified later
 					}
 					cmd := exec.Command("sh", "-c",
 						fmt.Sprintf("kubectl get ingresstlslogs.ingress-audit.morty.dev -n %s | grep ns-%d-ingress-%d | awk '{print $1}'", namespace, i, i))
@@ -442,29 +447,62 @@ var _ = Describe("Manager", Ordered, func() {
 
 			Eventually(verifyfailure, 10*time.Minute, time.Second).Should(Succeed())
 
+			lastIndex := 0 // Only read from the new part
+
 			By("Verifying the successful results")
 			verifyNS5success := func(g Gomega) {
 				cmd := exec.Command("kubectl", "logs", controllerPodName, "-n", namespace)
 				output, err := utils.Run(cmd)
-				fmt.Println(output)
+				Expect(err).NotTo(HaveOccurred())
 
 				lines := strings.Split(output, "\n")
 
-				count := 0
+				HTTPSCount := 0
 
-				for _, line := range lines {
-					if strings.Contains(line, "Ingress ns-5/ingress-5 TLS ia applied correctly") {
-						count++
+				for i := lastIndex; i < len(lines); i++ {
+					fmt.Println(lines[i])
+					// Count ns-5 once
+					if strings.Contains(lines[i], "ns-5/ingress-5 TLS ia applied correctly") {
+						HTTPSCount++
+						break
+					}
+
+				}
+
+				lastIndex = len(lines)
+
+				// One line contains `TLS ia applied correctly``
+				g.Expect(HTTPSCount).To(Equal(1))
+			}
+
+			Eventually(verifyNS5success, 10*time.Minute, time.Second).Should(Succeed())
+
+			lastIndex = 0 // remember this between loops
+
+			verifyNS6success := func(g Gomega) {
+				cmd := exec.Command("kubectl", "logs", controllerPodName, "-n", namespace)
+				output, err := utils.Run(cmd)
+				Expect(err).NotTo(HaveOccurred())
+
+				lines := strings.Split(output, "\n")
+
+				HTTPCount := 0
+
+				for i := lastIndex; i < len(lines); i++ {
+					fmt.Println(lines[i])
+					// Count ns-6 once
+					if strings.Contains(lines[i], "ns-6/ingress-6 TLS is not used but redirect is applied") {
+						HTTPCount++
 						break
 					}
 				}
 
-				g.Expect(err).NotTo(HaveOccurred())
-				// One of the lines contains `TLS ia applied correctly``
-				g.Expect(count).To(Equal(1))
+				lastIndex = len(lines)
+
+				g.Expect(HTTPCount).To(Equal(1))
 			}
 
-			Eventually(verifyNS5success, 20*time.Minute, time.Second).Should(Succeed())
+			Eventually(verifyNS6success, 10*time.Minute, time.Second).Should(Succeed())
 		})
 	})
 })

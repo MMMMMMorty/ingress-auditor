@@ -1,5 +1,6 @@
 # bash
-for i in {1..5}; do
+# Make sure the number is the same number as the ns number
+for i in {1..8}; do
     kubectl create ns ns-$i
     # create deployment
     kubectl create deployment nginx-$i \
@@ -36,7 +37,15 @@ kubectl create secret tls secret-tls \
   --key=tls-5.key \
   -n ns-5
 
-for i in {1..5}; do
+kubectl delete secret secret-tls \
+  -n ns-8
+
+kubectl create secret tls secret-tls \
+  --cert=tls-8.crt \
+  --key=tls-8.key \
+  -n ns-8
+
+for i in {1..8}; do
     # create ingress
     kubectl apply -f ingresses/ns-$i-ingress.yaml
     ADDRESS=$(kubectl get ing ingress-$i -n ns-$i -o jsonpath='{.status.loadBalancer.ingress[0].ip}')

@@ -1,13 +1,11 @@
 # bash
 cd ../
 
-# start Minikube
-minikube start
 # Enable ingress-nginx (Necessary!)
 minikube addons enable ingress
 # Remove the old ingress auditor
 make uninstall
-for i in {1..5}; do
+for i in {1..8}; do
     kubectl delete ns ns-$i
 done
 # generate files

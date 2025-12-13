@@ -1,0 +1,19 @@
+# Wihtout TLS and without redirect
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ingress-7
+  namespace: ns-7
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: https-example-7.foo.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: nginx-7
+            port:
+              number: 80
