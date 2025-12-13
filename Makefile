@@ -59,7 +59,7 @@ vet: ## Run go vet against code.
 
 .PHONY: test
 test: manifests generate fmt vet setup-envtest ## Run tests.
-	KUBEBUILDER_ASSETS="$(shell "$(ENVTEST)" use $(ENVTEST_K8S_VERSION) --bin-dir "$(LOCALBIN)" -p path)" go test $$(go list ./... | grep -v /e2e) -coverprofile cover.out -timeout 30m
+	KUBEBUILDER_ASSETS="$(shell "$(ENVTEST)" use $(ENVTEST_K8S_VERSION) --bin-dir "$(LOCALBIN)" -p path)" go test $$(go list ./... | grep -v /e2e) -coverprofile cover.out -timeout 20m
 
 # To use a different vendor for e2e tests, modify the setup under 'tests/e2e'.
 # The default setup assumes Kind is pre-installed and builds/loads the Manager Docker image locally.
@@ -94,7 +94,7 @@ install-ingress-nginx:
 .PHONY: test-e2e
 test-e2e: setup-test-e2e install-ingress-nginx manifests generate fmt vet ## Run the e2e tests using Minikube, increase the timmeout to 30 mins
 	MINIKUBE=$(MINIKUBE) MINIKUBE_PROFILE=$(MINIKUBE_PROFILE) \
-		go test -tags=e2e ./test/e2e/ -v -ginkgo.v -timeout 30m
+		go test -tags=e2e ./test/e2e/ -v -ginkgo.v -timeout 20m
 	$(MAKE) cleanup-test-e2e
 
 .PHONY: cleanup-test-e2e

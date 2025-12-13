@@ -34,6 +34,16 @@ jobs:
       - name: Verify helm installation
         run: helm version
 
+      - name: Install internal CA
+        run: |
+          echo "${{ secrets.INTERNAL_CA_CERT_5 }}" > internal-ca.crt
+          sudo cp internal-ca.crt /usr/local/share/ca-certificates/internal-ca.crt
+          sudo update-ca-certificates
+      
+      - name: Verify CA is trusted
+        run: |
+          openssl verify -CApath /etc/ssl/certs internal-ca.crt
+
       - name: Running Test e2e
         run: |
           go mod tidy

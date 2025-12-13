@@ -366,16 +366,18 @@ var _ = Describe("Manager", Ordered, func() {
 					hostname := fmt.Sprintf("https-example-%d.foo.com", i)
 					g.Expect(ip).NotTo(BeEmpty())
 
-					// delete the previous line and then add new line
-					cmd = exec.Command("bash", "-c",
-						fmt.Sprintf("sudo sed -i '/[[:space:]]%s$/d' /etc/hosts && echo '%s %s' | sudo tee -a /etc/hosts > /dev/null",
-							hostname, ip, hostname),
-					)
-					output, err = utils.Run(cmd)
+					if ip != "" {
+						// delete the previous line and then add new line
+						cmd = exec.Command("bash", "-c",
+							fmt.Sprintf("sudo sed -i '/[[:space:]]%s$/d' /etc/hosts && echo '%s %s' | sudo tee -a /etc/hosts > /dev/null",
+								hostname, ip, hostname),
+						)
+						output, err = utils.Run(cmd)
 
-					Expect(err).NotTo(HaveOccurred(), "Failed to put host name mapping %s", output)
+						Expect(err).NotTo(HaveOccurred(), "Failed to put host name mapping %s", output)
 
-					fmt.Printf("ingress is created in ns-%d\n", i)
+						fmt.Printf("ingress is created in ns-%d\n", i)
+					}
 				}
 			}
 
@@ -447,9 +449,9 @@ var _ = Describe("Manager", Ordered, func() {
 
 			Eventually(verifyfailure, 10*time.Minute, time.Second).Should(Succeed())
 
+			By("Verifying the successful results")
 			lastIndex := 0 // Only read from the new part
 
-			By("Verifying the successful results")
 			verifyNS5success := func(g Gomega) {
 				cmd := exec.Command("kubectl", "logs", controllerPodName, "-n", namespace)
 				output, err := utils.Run(cmd)
