@@ -53,7 +53,16 @@ jobs:
       - name: TLS debug
         if: failure()
         run: |
+          echo "=== TLS handshake ==="
           openssl s_client \
             -connect https-example-5.foo.com:443 \
             -servername https-example-5.foo.com \
-            -showcerts
+            -showcerts </dev/null
+
+          echo "=== Verify ==="
+          openssl s_client \
+          -connect https-example-5.foo.com:443 \
+          -servername https-example-5.foo.com \
+          -CAfile internal-ca.crt \
+          -verify_return_error \
+          -showcerts </dev/null
