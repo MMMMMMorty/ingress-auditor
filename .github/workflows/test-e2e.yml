@@ -50,10 +50,10 @@ jobs:
           make test-e2e
 
       # uncomment for debugging
-      # - name: TLS debug
-      #   if: failure()
-      #   run: |
-      #     openssl s_client \
-      #       -connect https-example-5.foo.com:443 \
-      #       -servername https-example-5.foo.com \
-      #       -showcerts
+      - name: TLS debug
+        if: failure()
+        run: |
+          openssl s_client \
+            -connect https-example-5.foo.com:443 \
+            -servername https-example-5.foo.com \
+            -showcerts
