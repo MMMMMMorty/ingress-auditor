@@ -10,9 +10,11 @@ A project that apply a simple Kubernetes operator monitoring ingresses across na
 
 ## Architecture
 
-### Ingress TLS Log
+A Kubernetes operator that monitors ingress resources and generates an Ingress TLS log CRD when TLS is misconfigured or not properly used. The design of the IngressTLSLog custom resource and its controller is introduced below.
 
-Refer to [sample](config/samples/ingress-audit_v1alpha1_ingresstlslog.yaml)
+### IngressTLSLog Custom Resource
+
+This resource is used to persist logs when ingress TLS is not properly configured or used. A [sample](config/samples/ingress-audit_v1alpha1_ingresstlslog.yaml) is shown below.
 
 ```
 apiVersion: ingress-audit.morty.dev/v1alpha1
@@ -35,15 +37,17 @@ spec:
 - `level`: the log severity, including `Error`, `Warn` and `Info`
 - `message`: the log
 
-CRD name: `<namespace>-<ingressName>-<generationTimestamp>-<four random number>`
+Generated CRD name rule: `<namespace>-<ingressName>-<generationTimestamp>-<four random number>`
 
 ### Controller
 
-For requirements 1 and 2, the design is:
+This controller is designed to satisfy the four requirements described above.
+
+For requirements 1 and 2, the design is shown in the below figure.
 
 ![Basic design](assets/code_logic.png)
 
-8 types of error messages:
+There are eight types of errors, each mapped to a different error message in the CRD:
 - `ErrFetchIngree` : "unable to fetch ingress"
 - `ErrSecretNameMissing`: "the secretName does not define in ingress"
 - `ErrFetchSecret`: "unable to fetch secret"
@@ -66,7 +70,7 @@ Noted: **Even though the error type is the same, the last update time + interval
 
 For requirement 4, 
 
-CRD ingresstlslog is generated, when the error is logged.
+The IngressTLSLog CRD is generated when an error is detected. Its purpose is to persist the error log.
 
 ## Development
 
@@ -81,7 +85,7 @@ CRD ingresstlslog is generated, when the error is logged.
 8. Install [golangci-lint](https://golangci-lint.run/docs/welcome/install/)
 9. Choose Operator Framework or non-framework? -> framework (easier to develop and less security vunlerbility) kubebuilder 
 10. Install [kubeBuilder](https://book.kubebuilder.io/quick-start.html#installation)
-11. Init project and API
+11. Init kubebuilder project and API
   ```
   kubebuilder init \
     --domain morty.dev \
@@ -94,7 +98,7 @@ CRD ingresstlslog is generated, when the error is logged.
   ```
   The generated api is ingress-audit.morty.dev/v1alpha1
 
-12. define ingress-audit CR and controller
+12. Define ingress-audit CR and controller
 
 Modify the files  for [ingress-audit CR](api/v1alpha1/ingresstlslog_types.go) and [controller](internal/controller/ingresstlslog_controller.go)
 
@@ -213,15 +217,40 @@ Check the results:
 kubectl logs <pod> -n ingress-auditor-system
 ```
 
-Only 3 types of errors are tested, while more complete tests are in controller test(below). Here are the relationships:
+5 types of errors are tested, and 2 types of successful cases. More complete tests are in controller test(below). Here are the relationships:
 
 ```
 "ingress-1": ErrFetchSecret,
 "ingress-2": ErrTLSVerification,
 "ingress-3": ErrTLSVerification,
 "ingress-4": ErrSecretNameMissing,
-"ingress-5": Success,
+"ingress-5": Success, (HTTPS)
+"ingress-6": Success, (HTTP)
+"ingress-7": ErrHTTPRedirectMissing,
+"ingress-8": ErrHostsMissing
 ```
+
+#### Test case generation
+
+SSL generate key and crt, generate key + self-signed cert in one command with pre-defined config
+```
+sudo openssl req -x509 -newkey rsa:2048 \
+  -keyout <keyName>.key \
+  -out <crtName>.crt \
+  -days 365 \
+  -nodes \
+  -config <configName>.conf
+```
+
+Generate secret
+```
+kubectl create secret tls secret-tls \
+  --cert=<crtName>.crt \
+  --key=<keyName>.key \
+  -n <ns>
+```
+
+Define your own service, then ingress, use the above secret as secret name in TLS.
 
 ### Controller Test
 
@@ -233,13 +262,16 @@ make test
 This controller test contains 8 types of error failure test and one successful test (Non HTTP + redirect)
 
 ### E2E Tests
-
-E2E Tests can be tested locally or in Github Action.
+TestE2E runs the end-to-end (e2e) test suite for the project. These tests execute in an isolated, temporary environment to validate project changes with the purpose of being used in CI jobs. The default setup requires Kind, builds/loads the Manager Docker image locally, and installs CertManager. E2E tests takes 5-15 mins. The timeout is set as 30 mins.
 ```
-make e2e
+make test-e2e
 ```
 E2E tests run the same test as local test with the same resources.
 
+remove the e2e test
+```
+make cleanup-test-e2e
+```
 ## Debugging problem
 `Error: failed to create API: unable to run post-scaffold tasks of "base.go.kubebuilder.io/v4": exit status 2`
 
@@ -257,8 +289,10 @@ E2E tests run the same test as local test with the same resources.
 chatgpt prompts:
 - [in k8s ingress how to check if TLS works?](https://chatgpt.com/s/t_69397b3fa35c8191a41c4338b1a80c32)
 - [I just want to try if the connection work, if not, err, if yes, continue, next host](https://chatgpt.com/s/t_69398ddb3bf88191951566a6a951c04e)
+- [SSL generation, gen key and gen crt with conf](https://chatgpt.com/s/t_693d45b0188c81919645343119cd08df)
 - [TLS connection with base64 string crt and key?](https://chatgpt.com/s/t_693a52439b788191adc640a004ec6917)
 - [User can only input number as second, then change it to time.Duration](https://chatgpt.com/s/t_693a870d19108191811e8b2c9f12a625)
+- [how to use time.Now() compare lastupdateTIme time.Time + interval Time.Duration](https://chatgpt.com/s/t_693a892da3c88191ad117fd27c621e0f)
 - [for kubebuilder, how to know Reconcile is triggered by event or shcedule time (requeueAfter)?](https://chatgpt.com/s/t_693a86f3dbf08191b227562dff37f26a)
 - [how to use time.Now() compare lastupdateTIme time.Time + interval Time.Duration](https://chatgpt.com/s/t_693a892da3c88191ad117fd27c621e0f)
 - [how to changec time.Time to *metav1.Time](https://chatgpt.com/s/t_693a94daf7c88191ba77e7e73076a7e7)
@@ -271,7 +305,7 @@ chatgpt prompts:
 
 - Why not ownership? ingress owns ingresstlslog, so the ingresstlslog can be deleted when ingress is deleted.
 
-  Answer: cross-namespace owner references are disallowed, ingresses can be in different namespaces, while ingresstlslogs are always in ingress-auditor-system"}
+  Answer: cross-namespace owner references are disallowed, ingresses can be in different namespaces, while ingresstlslogs are always in ingress-auditor-system
 
 - Why choose minkube over kind?
 

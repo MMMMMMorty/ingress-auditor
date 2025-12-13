@@ -88,21 +88,6 @@ install-ingress-nginx:
 	@$(MINIKUBE) addons enable ingress -p $(MINIKUBE_PROFILE)
 
 	@echo "Minikube setup complete; cluster IP: $$($(MINIKUBE) ip -p $(MINIKUBE_PROFILE))"
-
-# 	@if [ -z "shell command -v helm 2>/dev/null" ]; then \
-# 		echo "helm not found! Please install Helm first."; \
-# 		exit 1; \
-# 	fi
-# 	@echo "Checking if ingress-nginx is installed..."
-# 	@if helm list -n ingress-nginx | grep -q ingress-nginx; then \
-# 		echo "ingress-nginx already installed"; \
-# 	else \
-# 		echo "Adding ingress-nginx repo"; \
-# 		helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx; \
-# 		helm repo update; \
-# 		echo "Installing ingress-nginx"; \
-# 		helm install ingress-nginx ingress-nginx/ingress-nginx --namespace ingress-nginx --create-namespace --set controller.service.type=LoadBalancer; \
-# 	fi
 	@echo "ingress-nginx setup complete"
 
 
@@ -207,7 +192,6 @@ $(LOCALBIN):
 
 ## Tool Binaries
 KUBECTL ?= kubectl
-KIND ?= kind
 KUSTOMIZE ?= $(LOCALBIN)/kustomize
 CONTROLLER_GEN ?= $(LOCALBIN)/controller-gen
 ENVTEST ?= $(LOCALBIN)/setup-envtest
