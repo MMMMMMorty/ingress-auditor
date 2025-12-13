@@ -462,6 +462,7 @@ var _ = Describe("Manager", Ordered, func() {
 				HTTPSCount := 0
 
 				for i := lastIndex; i < len(lines); i++ {
+					fmt.Println(lines[i])
 					// Count ns-5 once
 					if strings.Contains(lines[i], "ns-5/ingress-5 TLS ia applied correctly") {
 						HTTPSCount++
