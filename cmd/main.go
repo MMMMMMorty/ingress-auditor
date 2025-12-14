@@ -38,6 +38,7 @@ import (
 
 	ingressauditv1alpha1 "github.com/MMMMMMorty/ingress-auditor/api/v1alpha1"
 	"github.com/MMMMMMorty/ingress-auditor/internal/controller"
+	"github.com/MMMMMMorty/ingress-auditor/internal/store"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -185,8 +186,8 @@ func main() {
 		Client:               mgr.GetClient(),
 		Scheme:               mgr.GetScheme(),
 		Interval:             time.Duration(intervalSeconds) * time.Second,
-		IngressErrorMap:      make(map[string]error),
-		IngressUpdateTimeMap: make(map[string]time.Time),
+		IngressErrorMap:      store.NewIngressErrorMap(),
+		IngressUpdateTimeMap: store.NewIngressUpdateTimeMap(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "IngressTLSLog")
 		os.Exit(1)

@@ -18,13 +18,10 @@ package controller
 
 import (
 	"context"
-	"crypto/tls"
-	"crypto/x509"
 	"errors"
 	"fmt"
 	"math/rand"
 	"strings"
-	"sync"
 	"time"
 
 	v1 "k8s.io/api/core/v1"
@@ -35,6 +32,9 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
+
+	"github.com/MMMMMMorty/ingress-auditor/internal/store"
+	"github.com/MMMMMMorty/ingress-auditor/internal/utils"
 
 	ingressauditv1alpha1 "github.com/MMMMMMorty/ingress-auditor/api/v1alpha1"
 	"github.com/go-logr/logr"
@@ -50,20 +50,10 @@ type IngressTLSLogReconciler struct {
 	// IngressErrorMap stores the error of each ingress
 	// If the ingress's error exists, skip
 	// If not, add or update the ingress's error
-	IngressErrorMap IngressErrorMap
+	IngressErrorMap *store.IngressErrorMap
 
 	// IngressUpdateTimeMap records the update time of the ingress
-	IngressUpdateTimeMap IngressUpdateTimeMap
-}
-
-type IngressErrorMap struct {
-	mu sync.RWMutex
-	m  map[string]error
-}
-
-type IngressUpdateTimeMap struct {
-	mu sync.RWMutex
-	m  map[string]time.Time
+	IngressUpdateTimeMap *store.IngressUpdateTimeMap
 }
 
 const (
@@ -127,9 +117,14 @@ func (r *IngressTLSLogReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 				return r.handleIngressError(ctx, ingressNs, ingressName, ingressNamespacedName, err, ErrFetchSecret, log)
 			}
 
+			// Only needs TLS secret
+			if secret.Type != v1.SecretTypeTLS {
+				return r.handleIngressError(ctx, ingressNs, ingressName, ingressNamespacedName, nil, ErrCrtOrKeyMissing, log)
+			}
+
 			// Get crt and key
-			crt := secret.Data["tls.crt"]
-			key := secret.Data["tls.key"]
+			crt := secret.Data[v1.TLSCertKey]
+			key := secret.Data[v1.TLSPrivateKeyKey]
 
 			if crt == nil || key == nil {
 				return r.handleIngressError(ctx, ingressNs, ingressName, ingressNamespacedName, nil, ErrCrtOrKeyMissing, log)
@@ -142,7 +137,7 @@ func (r *IngressTLSLogReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 
 			// For all the hosts, use openssl verifies it
 			for _, host := range tlsInstance.Hosts {
-				err = checkTLS(log, crt, key, host)
+				err = utils.CheckTLS(log, crt, key, host)
 				if err != nil {
 					return r.handleIngressError(ctx, ingressNs, ingressName, ingressNamespacedName, err, ErrTLSVerification, log)
 				}
@@ -183,18 +178,14 @@ func (r *IngressTLSLogReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 // checkKeyValue checks if the given key exists in the map and has the specified value.
 func (r *IngressTLSLogReconciler) checkKeyValue(key string, value error) bool {
 	// Only the key exists, value is the same and updateTime within lastUpdatTime add with interval, returns true
-	r.IngressErrorMap.mu.RLock()
-	v, ok := r.IngressErrorMap.m[key]
-	r.IngressErrorMap.mu.RUnlock()
+	v, ok := r.IngressErrorMap.Get(key)
 
 	// If the err does not exist or new err
 	if !ok || v != value {
 		return false
 	}
 
-	r.IngressUpdateTimeMap.mu.RLock()
-	lastUpdateTime, ok := r.IngressUpdateTimeMap.m[key]
-	r.IngressUpdateTimeMap.mu.RUnlock()
+	lastUpdateTime, ok := r.IngressUpdateTimeMap.Get(key)
 
 	// If updateTime does not exist (rare case)
 	if !ok {
@@ -207,22 +198,8 @@ func (r *IngressTLSLogReconciler) checkKeyValue(key string, value error) bool {
 
 // logErrorAndUpdateMaps updates maps of IngressUpdateTimeMap and IngressErrorMap
 func (r *IngressTLSLogReconciler) updateValueForKey(key string, err error, updateTime time.Time) {
-	r.setIngressErrorMap(key, err)
-	r.setIngressUpdateTimeMap(key, updateTime)
-}
-
-// setIngressUpdateTimeMap set write lock when writing to IngressUpdateTimeMap
-func (r *IngressTLSLogReconciler) setIngressUpdateTimeMap(key string, updateTime time.Time) {
-	r.IngressUpdateTimeMap.mu.Lock()
-	defer r.IngressUpdateTimeMap.mu.Unlock()
-	r.IngressUpdateTimeMap.m[key] = updateTime
-}
-
-// setIngressErrorMap set write lock when writing to IngressErrorMap
-func (r *IngressTLSLogReconciler) setIngressErrorMap(key string, value error) {
-	r.IngressErrorMap.mu.Lock()
-	defer r.IngressErrorMap.mu.Unlock()
-	r.IngressErrorMap.m[key] = value
+	r.IngressErrorMap.Set(key, err)
+	r.IngressUpdateTimeMap.Set(key, updateTime)
 }
 
 // createTLSLog creates ingresstlslogs instance
@@ -255,39 +232,6 @@ func (r *IngressTLSLogReconciler) logErrorAndUpdateMaps(ctx context.Context, ing
 	}
 
 	r.updateValueForKey(ingressNamespacedName, errType, updateTime)
-
-	return nil
-}
-
-// checkTLS used the []byte PEM crt and PEM key to connect host with HTTPS
-func checkTLS(log logr.Logger, crtPEM, keyPEM []byte, host string) error {
-
-	// Load client certificate
-	cert, err := tls.X509KeyPair(crtPEM, keyPEM)
-	if err != nil {
-		return fmt.Errorf("failed to load cert/key: %v", err)
-	}
-
-	// Root CA pool
-	rootCAs := x509.NewCertPool()
-	rootCAs.AppendCertsFromPEM(crtPEM)
-
-	tlsConfig := &tls.Config{
-		Certificates: []tls.Certificate{cert},
-		RootCAs:      rootCAs,
-		ServerName:   host, // important: SNI
-	}
-
-	conn, err := tls.Dial("tcp", host+":443", tlsConfig)
-	if err != nil {
-		return fmt.Errorf("failed to connect to %s: %v", host, err)
-	}
-
-	defer func() {
-		if err := conn.Close(); err != nil {
-			log.Error(err, "failed to close connection")
-		}
-	}()
 
 	return nil
 }

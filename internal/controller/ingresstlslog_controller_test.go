@@ -18,8 +18,8 @@ package controller
 
 import (
 	"context"
-	"time"
 
+	"github.com/MMMMMMorty/ingress-auditor/internal/store"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	networkingv1 "k8s.io/api/networking/v1"
@@ -158,8 +158,8 @@ var _ = Describe("IngressTLSLog Controller", func() {
 				Client:               k8sClient,
 				Scheme:               k8sClient.Scheme(),
 				Interval:             3600,
-				IngressErrorMap:      make(map[string]error),
-				IngressUpdateTimeMap: make(map[string]time.Time),
+				IngressErrorMap:      store.NewIngressErrorMap(),
+				IngressUpdateTimeMap: store.NewIngressUpdateTimeMap(),
 			}
 
 			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
@@ -289,8 +289,8 @@ var _ = Describe("IngressTLSLog Controller", func() {
 				Client:               k8sClient,
 				Scheme:               k8sClient.Scheme(),
 				Interval:             3600,
-				IngressErrorMap:      make(map[string]error),
-				IngressUpdateTimeMap: make(map[string]time.Time),
+				IngressErrorMap:      store.NewIngressErrorMap(),
+				IngressUpdateTimeMap: store.NewIngressUpdateTimeMap(),
 			}
 
 			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
