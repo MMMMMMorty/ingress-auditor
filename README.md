@@ -12,6 +12,135 @@ A project that apply a simple Kubernetes operator monitoring ingresses across na
 
 A Kubernetes operator that monitors ingress resources and generates an Ingress TLS log CRD when TLS is misconfigured or not properly used. The design of the IngressTLSLog custom resource and its controller is introduced below.
 
+### Structure
+
+```
+.devcontainer
+   |-- devcontainer.json
+   |-- post-install.sh
+.dockerignore
+.github
+   |-- workflows
+   |   |-- lint.yml
+   |   |-- test-e2e.yml
+   |   |-- test.yml
+.gitignore
+.golangci.yml
+Dockerfile
+Makefile
+PROJECT
+README.md
+api
+   |-- v1alpha1
+   |   |-- groupversion_info.go
+   |   |-- ingresstlslog_types.go
+   |   |-- zz_generated.deepcopy.go
+assets
+   |-- code_logic.png
+cmd
+   |-- main.go
+config
+   |-- crd
+   |   |-- bases
+   |   |   |-- ingress-audit.morty.dev_ingresstlslogs.yaml
+   |   |-- kustomization.yaml
+   |   |-- kustomizeconfig.yaml
+   |-- default
+   |   |-- cert_metrics_manager_patch.yaml
+   |   |-- kustomization.yaml
+   |   |-- manager_metrics_patch.yaml
+   |   |-- metrics_service.yaml
+   |-- manager
+   |   |-- kustomization.yaml
+   |   |-- manager.yaml
+   |-- network-policy
+   |   |-- allow-metrics-traffic.yaml
+   |   |-- kustomization.yaml
+   |-- prometheus
+   |   |-- kustomization.yaml
+   |   |-- monitor.yaml
+   |   |-- monitor_tls_patch.yaml
+   |-- rbac
+   |   |-- ingresstlslog_admin_role.yaml
+   |   |-- ingresstlslog_editor_role.yaml
+   |   |-- ingresstlslog_viewer_role.yaml
+   |   |-- kustomization.yaml
+   |   |-- leader_election_role.yaml
+   |   |-- leader_election_role_binding.yaml
+   |   |-- metrics_auth_role.yaml
+   |   |-- metrics_auth_role_binding.yaml
+   |   |-- metrics_reader_role.yaml
+   |   |-- role.yaml
+   |   |-- role_binding.yaml
+   |   |-- service_account.yaml
+   |-- samples
+   |   |-- ingress-audit_v1alpha1_ingresstlslog.yaml
+   |   |-- kustomization.yaml
+go.mod
+go.sum
+hack
+   |-- boilerplate.go.txt
+internal
+   |-- controller
+   |   |-- ingresstlslog_controller.go
+   |   |-- ingresstlslog_controller_test.go
+   |   |-- suite_test.go
+   |-- store
+   |   |-- ingress_error_map.go
+   |   |-- ingress_update_time_map.go
+   |-- utils
+   |   |-- tls.go
+local_test
+   |-- create_and_deploy.sh
+   |-- create_ingress.sh
+   |-- dns
+   |   |-- coredns-original.yaml
+   |-- ingresses
+   |   |-- ns-1-ingress.yaml
+   |   |-- ns-2-ingress.yaml
+   |   |-- ns-3-ingress.yaml
+   |   |-- ns-4-ingress.yaml
+   |   |-- ns-5-ingress.yaml
+   |   |-- ns-6-ingress.yaml
+   |   |-- ns-7-ingress.yaml
+   |   |-- ns-8-ingress.yaml
+   |-- san-5.conf
+   |-- san-8.conf
+   |-- tls-2.crt
+   |-- tls-2.key
+   |-- tls-3.crt
+   |-- tls-3.key
+   |-- tls-5.crt
+   |-- tls-5.key
+   |-- tls-8.crt
+   |-- tls-8.key
+test
+   |-- e2e
+   |   |-- e2e_suite_test.go
+   |   |-- e2e_test.go
+   |   |-- ingresses
+   |   |   |-- ns-1-ingress.yaml
+   |   |   |-- ns-2-ingress.yaml
+   |   |   |-- ns-3-ingress.yaml
+   |   |   |-- ns-4-ingress.yaml
+   |   |   |-- ns-5-ingress.yaml
+   |   |   |-- ns-6-ingress.yaml
+   |   |   |-- ns-7-ingress.yaml
+   |   |   |-- ns-8-ingress.yaml
+   |   |-- tls
+   |   |   |-- tls-2.crt
+   |   |   |-- tls-2.key
+   |   |   |-- tls-3.crt
+   |   |   |-- tls-3.key
+   |   |   |-- tls-5.crt
+   |   |   |-- tls-5.key
+   |   |   |-- tls-8.crt
+   |   |   |-- tls-8.key
+   |-- utils
+   |   |-- dns.go
+   |   |-- utils.go
+```
+
 ### IngressTLSLog Custom Resource
 
 This resource is used to persist logs when ingress TLS is not properly configured or used. A [sample](config/samples/ingress-audit_v1alpha1_ingresstlslog.yaml) is shown below.
@@ -288,7 +417,7 @@ make cleanup-test-e2e
 - [Watching Secondary Resources Owned by the Controller](https://book.kubebuilder.io/reference/watching-resources/secondary-owned-resources?search=SetControllerReference)
 - [requeueafter-x](https://book.kubebuilder.io/reference/watching-resources.html?highlight=RequeueAfter#when-requeueafter-x-is-useful)
 - [kubebuilder Get Started](https://book.kubebuilder.io/getting-started#sample-of-custom-resources)
-
+- [Is there a way to represent a directory tree in a Github README.md](https://stackoverflow.com/questions/23989232/is-there-a-way-to-represent-a-directory-tree-in-a-github-readme-md)
 ## LLM
 chatgpt prompts:
 - [in k8s ingress how to check if TLS works?](https://chatgpt.com/s/t_69397b3fa35c8191a41c4338b1a80c32)
