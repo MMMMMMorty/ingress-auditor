@@ -154,6 +154,12 @@ var _ = Describe("IngressTLSLog Controller", func() {
 		})
 		It("should be failed to reconcile the resource", func() {
 			By("Reconciling the ingress with creating TLS log failure")
+
+			typeIngressFailure := types.NamespacedName{
+				Name:      resourceNameFailure,
+				Namespace: "test-ingress-failure",
+			}
+
 			controllerReconciler := &IngressTLSLogReconciler{
 				Client:               k8sClient,
 				Scheme:               k8sClient.Scheme(),
@@ -163,7 +169,7 @@ var _ = Describe("IngressTLSLog Controller", func() {
 			}
 
 			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: typeNamespacedNameFailure,
+				NamespacedName: typeIngressFailure,
 			})
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("failed to create new TLS log"))
