@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"math/rand"
 	"strings"
+	"sync"
 	"time"
 
 	v1 "k8s.io/api/core/v1"
@@ -49,10 +50,20 @@ type IngressTLSLogReconciler struct {
 	// IngressErrorMap stores the error of each ingress
 	// If the ingress's error exists, skip
 	// If not, add or update the ingress's error
-	IngressErrorMap map[string]error
+	IngressErrorMap IngressErrorMap
 
 	// IngressUpdateTimeMap records the update time of the ingress
-	IngressUpdateTimeMap map[string]time.Time
+	IngressUpdateTimeMap IngressUpdateTimeMap
+}
+
+type IngressErrorMap struct {
+	mu sync.RWMutex
+	m  map[string]error
+}
+
+type IngressUpdateTimeMap struct {
+	mu sync.RWMutex
+	m  map[string]time.Time
 }
 
 const (
@@ -172,22 +183,46 @@ func (r *IngressTLSLogReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 // checkKeyValue checks if the given key exists in the map and has the specified value.
 func (r *IngressTLSLogReconciler) checkKeyValue(key string, value error) bool {
 	// Only the key exists, value is the same and updateTime within lastUpdatTime add with interval, returns true
-	if v, ok := r.IngressErrorMap[key]; ok && v == value {
-		if lastUpdateTime, ok := r.IngressUpdateTimeMap[key]; ok {
-			if time.Now().Before(lastUpdateTime.Add(r.Interval)) {
-				return true
-			}
-		}
+	r.IngressErrorMap.mu.RLock()
+	v, ok := r.IngressErrorMap.m[key]
+	r.IngressErrorMap.mu.RUnlock()
+
+	// If the err does not exist or new err
+	if !ok || v != value {
+		return false
 	}
 
-	return false
+	r.IngressUpdateTimeMap.mu.RLock()
+	lastUpdateTime, ok := r.IngressUpdateTimeMap.m[key]
+	r.IngressUpdateTimeMap.mu.RUnlock()
+
+	// If updateTime does not exist (rare case)
+	if !ok {
+		return false
+	}
+
+	// If lastUpdateTime + interval > now, return True; vice versa
+	return time.Now().Before(lastUpdateTime.Add(r.Interval))
 }
 
 // logErrorAndUpdateMaps updates maps of IngressUpdateTimeMap and IngressErrorMap
-func (r *IngressTLSLogReconciler) updateValueForKey(key string, value error, updateTime time.Time) time.Time {
-	r.IngressUpdateTimeMap[key] = updateTime
-	r.IngressErrorMap[key] = value
-	return updateTime
+func (r *IngressTLSLogReconciler) updateValueForKey(key string, err error, updateTime time.Time) {
+	r.setIngressErrorMap(key, err)
+	r.setIngressUpdateTimeMap(key, updateTime)
+}
+
+// setIngressUpdateTimeMap set write lock when writing to IngressUpdateTimeMap
+func (r *IngressTLSLogReconciler) setIngressUpdateTimeMap(key string, updateTime time.Time) {
+	r.IngressUpdateTimeMap.mu.Lock()
+	defer r.IngressUpdateTimeMap.mu.Unlock()
+	r.IngressUpdateTimeMap.m[key] = updateTime
+}
+
+// setIngressErrorMap set write lock when writing to IngressErrorMap
+func (r *IngressTLSLogReconciler) setIngressErrorMap(key string, value error) {
+	r.IngressErrorMap.mu.Lock()
+	defer r.IngressErrorMap.mu.Unlock()
+	r.IngressErrorMap.m[key] = value
 }
 
 // createTLSLog creates ingresstlslogs instance
