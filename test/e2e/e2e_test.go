@@ -447,7 +447,7 @@ var _ = Describe("Manager", Ordered, func() {
 						continue // manually skip successful cases, which will be verified later
 					}
 					cmd := exec.Command("sh", "-c",
-						fmt.Sprintf("kubectl get ingresstlslogs.ingress-audit.morty.dev -n %s | grep ns-%d-ingress-%d | awk '{print $1}'", namespace, i, i))
+						fmt.Sprintf("kubectl get ingresstlslogs.ingress-audit.morty.dev -n ns-%d | grep ns-%d-ingress-%d | awk '{print $1}'", i, i, i))
 					// kubectl get ingresstlslogs.ingress-audit.morty.dev -n ingress-auditor-system \
 					// -o json | jq -r '.items[] | select(.metadata.name | startswith("ns-1-ingress-1")) | .metadata.name'
 					output, err := utils.Run(cmd)
@@ -457,7 +457,7 @@ var _ = Describe("Manager", Ordered, func() {
 					tlslog := strings.TrimSpace(output)
 					cmd = exec.Command(
 						"kubectl", "get", "ingresstlslogs", tlslog,
-						"-n", namespace,
+						"-n", fmt.Sprintf("ns-%d", i),
 						"-o", "jsonpath={.spec.message}",
 					)
 					output, err = utils.Run(cmd)

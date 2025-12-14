@@ -199,7 +199,7 @@ Noted: **Even though the error type is the same, the last update time + interval
 
 For requirement 4, 
 
-The IngressTLSLog CRD is generated when an error is detected. Its purpose is to persist the error log.
+The IngressTLSLog CRD is generated when an error is detected. Its purpose is to persist the error log. The CRD is owned by the ingress that it generated from, which means if the ingress is deleted, the log will be deleted. In special case, during log generation, ingress is not fetched, then the log will be generated in `ingress-auditor-system` (It will not disappear even the ingress is deleted).
 
 ## Development
 
@@ -285,10 +285,15 @@ kubectl get configmap coredns -n kube-system -oyaml
 ```
 
 Check the generated ingress TLS log
+
+Usually the ingressTLSlog is generated under the same namespace as ingress
+```
+kubectl get ingresstlslogs.ingress-audit.morty.dev -n <ingress-namespace>
+```
+However, if the error is `ErrFetchIngree` ("unable to fetch ingress"), the log is generated in `ingress-auditor-system` namespace.
 ```
 kubectl get ingresstlslogs.ingress-audit.morty.dev -n ingress-auditor-system
 ```
-
 Restart the deployments/pods of ingress-auditor
 ```
 kubectl rollout restart deployment -n ingress-auditor-system
@@ -436,9 +441,9 @@ chatgpt prompts:
 
 ## Thinking
 
-- Why not ownership? ingress owns ingresstlslog, so the ingresstlslog can be deleted when ingress is deleted.
+- Why use ownership? 
 
-  Answer: cross-namespace owner references are disallowed, ingresses can be in different namespaces, while ingresstlslogs are always in ingress-auditor-system
+  Answer: Ingress owns ingresstlslog, so the ingresstlslog can be deleted when ingress is deleted. It is noted that in the begining version, ingresstlslog is designed to be generated only in `ingress-auditor-system` namespace. In this case, cross-namespace owner references are disallowed.
 
 - Why choose minkube over kind?
 

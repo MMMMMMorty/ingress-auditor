@@ -57,9 +57,7 @@ type IngressTLSLogReconciler struct {
 }
 
 const (
-	// ingressAuditorNamespace where the project is deployed in
-	ingressAuditorNamespace = "ingress-auditor-system"
-	ErrLogLevel             = "Error"
+	ErrLogLevel = "Error"
 )
 
 var ErrFetchIngree = errors.New("unable to fetch ingress")
@@ -97,7 +95,7 @@ func (r *IngressTLSLogReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 
 	err := r.Get(ctx, req.NamespacedName, ingress)
 	if err != nil {
-		return r.handleIngressError(ctx, ingressNs, ingressName, ingressNamespacedName, err, ErrFetchIngree, log)
+		return r.handleIngressError(ctx, ingress, ingressNs, ingressName, ingressNamespacedName, err, ErrFetchIngree, log)
 	}
 
 	// Check if TLS exists
@@ -107,19 +105,19 @@ func (r *IngressTLSLogReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		for _, tlsInstance := range ingress.Spec.TLS {
 			// Get the secretName
 			if tlsInstance.SecretName == "" {
-				return r.handleIngressError(ctx, ingressNs, ingressName, ingressNamespacedName, nil, ErrSecretNameMissing, log)
+				return r.handleIngressError(ctx, ingress, ingressNs, ingressName, ingressNamespacedName, nil, ErrSecretNameMissing, log)
 			}
 
 			// Fetch the secret
 			secret := &v1.Secret{}
 			err = r.Get(ctx, types.NamespacedName{Name: tlsInstance.SecretName, Namespace: ingress.Namespace}, secret)
 			if err != nil {
-				return r.handleIngressError(ctx, ingressNs, ingressName, ingressNamespacedName, err, ErrFetchSecret, log)
+				return r.handleIngressError(ctx, ingress, ingressNs, ingressName, ingressNamespacedName, err, ErrFetchSecret, log)
 			}
 
 			// Only needs TLS secret
 			if secret.Type != v1.SecretTypeTLS {
-				return r.handleIngressError(ctx, ingressNs, ingressName, ingressNamespacedName, nil, ErrCrtOrKeyMissing, log)
+				return r.handleIngressError(ctx, ingress, ingressNs, ingressName, ingressNamespacedName, nil, ErrCrtOrKeyMissing, log)
 			}
 
 			// Get crt and key
@@ -127,19 +125,19 @@ func (r *IngressTLSLogReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 			key := secret.Data[v1.TLSPrivateKeyKey]
 
 			if crt == nil || key == nil {
-				return r.handleIngressError(ctx, ingressNs, ingressName, ingressNamespacedName, nil, ErrCrtOrKeyMissing, log)
+				return r.handleIngressError(ctx, ingress, ingressNs, ingressName, ingressNamespacedName, nil, ErrCrtOrKeyMissing, log)
 			}
 
 			// Get the hosts
 			if len(tlsInstance.Hosts) == 0 {
-				return r.handleIngressError(ctx, ingressNs, ingressName, ingressNamespacedName, nil, ErrHostsMissing, log)
+				return r.handleIngressError(ctx, ingress, ingressNs, ingressName, ingressNamespacedName, nil, ErrHostsMissing, log)
 			}
 
 			// For all the hosts, use openssl verifies it
 			for _, host := range tlsInstance.Hosts {
 				err = utils.CheckTLS(log, crt, key, host)
 				if err != nil {
-					return r.handleIngressError(ctx, ingressNs, ingressName, ingressNamespacedName, err, ErrTLSVerification, log)
+					return r.handleIngressError(ctx, ingress, ingressNs, ingressName, ingressNamespacedName, err, ErrTLSVerification, log)
 				}
 			}
 
@@ -148,7 +146,7 @@ func (r *IngressTLSLogReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	} else {
 		// If not, check if redirect exist.
 		if len(ingress.Annotations) == 0 {
-			return r.handleIngressError(ctx, ingressNs, ingressName, ingressNamespacedName, nil, ErrHTTPRedirectMissing, log)
+			return r.handleIngressError(ctx, ingress, ingressNs, ingressName, ingressNamespacedName, nil, ErrHTTPRedirectMissing, log)
 		}
 
 		redirect := false
@@ -166,7 +164,7 @@ func (r *IngressTLSLogReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		}
 
 		if !redirect {
-			return r.handleIngressError(ctx, ingressNs, ingressName, ingressNamespacedName, nil, ErrHTTPRedirectMissing, log)
+			return r.handleIngressError(ctx, ingress, ingressNs, ingressName, ingressNamespacedName, nil, ErrHTTPRedirectMissing, log)
 		}
 
 		log.Info(fmt.Sprintf("Ingress %s TLS is not used but redirect is applied", ingressNamespacedName))
@@ -203,13 +201,13 @@ func (r *IngressTLSLogReconciler) updateValueForKey(key string, err error, updat
 }
 
 // createTLSLog creates ingresstlslogs instance
-func (r *IngressTLSLogReconciler) createTLSLog(ingressNamespace string, ingressName string, err error, updateTime time.Time) *ingressauditv1alpha1.IngressTLSLog {
+func (r *IngressTLSLogReconciler) createTLSLog(ingress *networkingv1.Ingress, ingressNamespace string, ingressName string, err error, updateTime time.Time) (*ingressauditv1alpha1.IngressTLSLog, error) {
 	timeStr := updateTime.Format("2006-01-02-15-04-05")
 	uniqueSuffix := fmt.Sprintf("%04d", rand.Intn(10000)) // random 4-digit number
 	TLSLog := &ingressauditv1alpha1.IngressTLSLog{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      fmt.Sprintf("%s-%s-%s-%s", ingressNamespace, ingressName, timeStr, uniqueSuffix),
-			Namespace: ingressAuditorNamespace,
+			Namespace: ingressNamespace,
 		},
 		Spec: ingressauditv1alpha1.IngressTLSLogSpec{
 			LogLevel:            ErrLogLevel,
@@ -220,14 +218,21 @@ func (r *IngressTLSLogReconciler) createTLSLog(ingressNamespace string, ingressN
 		},
 	}
 
-	return TLSLog
+	if err := ctrl.SetControllerReference(ingress, TLSLog, r.Scheme); err != nil {
+		return nil, err
+	}
+
+	return TLSLog, nil
 }
 
 // logErrorAndUpdateMaps creates ingresstlslogs instance and updates maps of IngressUpdateTimeMap and IngressErrorMap
-func (r *IngressTLSLogReconciler) logErrorAndUpdateMaps(ctx context.Context, ingressNs, ingressName string, errType error, ingressNamespacedName string) error {
+func (r *IngressTLSLogReconciler) logErrorAndUpdateMaps(ctx context.Context, ingress *networkingv1.Ingress, ingressNs, ingressName string, errType error, ingressNamespacedName string) error {
 	updateTime := time.Now()
-	TLSlog := r.createTLSLog(ingressNs, ingressName, errType, updateTime)
-	if err := r.Create(ctx, TLSlog); err != nil {
+	TLSlog, err := r.createTLSLog(ingress, ingressNs, ingressName, errType, updateTime)
+	if err != nil {
+		return fmt.Errorf("failed to create TLS log: %v", err)
+	}
+	if err = r.Create(ctx, TLSlog); err != nil {
 		return err
 	}
 
@@ -239,6 +244,7 @@ func (r *IngressTLSLogReconciler) logErrorAndUpdateMaps(ctx context.Context, ing
 // handleIngressError handles different types of err when checking the TLS status of ingress
 func (r *IngressTLSLogReconciler) handleIngressError(
 	ctx context.Context,
+	ingress *networkingv1.Ingress,
 	ingressNs, ingressName, ingressNamespacedName string,
 	err error,
 	errType error,
@@ -251,7 +257,7 @@ func (r *IngressTLSLogReconciler) handleIngressError(
 	}
 
 	// Otherwise, log the error and update the internal maps
-	if updateErr := r.logErrorAndUpdateMaps(ctx, ingressNs, ingressName, errType, ingressNamespacedName); updateErr != nil {
+	if updateErr := r.logErrorAndUpdateMaps(ctx, ingress, ingressNs, ingressName, errType, ingressNamespacedName); updateErr != nil {
 		log.Error(err, ErrCreateTLSLog.Error())
 		return ctrl.Result{}, ErrCreateTLSLog
 	}
@@ -271,5 +277,6 @@ func (r *IngressTLSLogReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&networkingv1.Ingress{}).
 		Named("ingresstlslog").
+		Owns(&ingressauditv1alpha1.IngressTLSLog{}).
 		Complete(r)
 }
