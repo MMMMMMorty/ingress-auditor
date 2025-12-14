@@ -150,6 +150,10 @@ Check the log of pod of ingress-auditor
 ```
 kubectl logs <pod> -n ingress-auditor-system
 ```
+Check DNS records
+```
+kubectl get configmap coredns -n kube-system -oyaml
+```
 
 Check the generated ingress TLS log
 ```
@@ -325,3 +329,9 @@ operator-sdk: Multiple languages, support for Ansible or Helm. Focus on full-lif
 kubebuilder: Primarily Golang and Kubernetes native based. Can be extensively used in operator-sdk.
 
 They both make use of controller-runtime and have the same basic layout. Consider I want to use golang to create a simple operator for specific function, kubebuilder seems to be a better option.
+
+- Why the local test can pass but the CI test for test case 5 does not work?
+
+After several debugging (not trusted CA, DNS problem), I located the problem to: using `sudo` to write the ip resolve line to host machine, since CI environments don’t allow sudo or host-level changes, so modifying /etc/hosts fails.
+
+I decided to change host DNS to CoreDNS, which operates entirely in user space and inside the CI environment. So I converts a CoreDNS Corefile into JSON, patches the Kubernetes ConfigMap, and restarts CoreDNS to make sure new DNS rules take effect.

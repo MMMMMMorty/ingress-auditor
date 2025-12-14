@@ -34,15 +34,15 @@ jobs:
       - name: Verify helm installation
         run: helm version
 
-      - name: Install internal CA
-        run: |
-          echo "${{ secrets.INTERNAL_CA_CERT_5 }}" > internal-ca.crt
-          sudo cp internal-ca.crt /usr/local/share/ca-certificates/internal-ca.crt
-          sudo update-ca-certificates
+      # - name: Install internal CA
+      #   run: |
+      #     echo "${{ secrets.INTERNAL_CA_CERT_5 }}" > internal-ca.crt
+      #     sudo cp internal-ca.crt /usr/local/share/ca-certificates/internal-ca.crt
+      #     sudo update-ca-certificates
       
-      - name: Verify CA is trusted
-        run: |
-          openssl verify -CApath /etc/ssl/certs internal-ca.crt
+      # - name: Verify CA is trusted
+      #   run: |
+      #     openssl verify -CApath /etc/ssl/certs internal-ca.crt
 
       - name: Running Test e2e
         run: |
@@ -50,19 +50,19 @@ jobs:
           make test-e2e
 
       # uncomment for debugging
-      - name: TLS debug
-        if: failure()
-        run: |
-          echo "=== TLS handshake ==="
-          openssl s_client \
-            -connect https-example-5.foo.com:443 \
-            -servername https-example-5.foo.com \
-            -showcerts </dev/null
+      # - name: TLS debug
+      #   if: failure()
+      #   run: |
+      #     echo "=== TLS handshake ==="
+      #     openssl s_client \
+      #       -connect https-example-5.foo.com:443 \
+      #       -servername https-example-5.foo.com \
+      #       -showcerts </dev/null
 
-          echo "=== Verify ==="
-          openssl s_client \
-          -connect https-example-5.foo.com:443 \
-          -servername https-example-5.foo.com \
-          -CAfile internal-ca.crt \
-          -verify_return_error \
-          -showcerts </dev/null
+      #     echo "=== Verify ==="
+      #     openssl s_client \
+      #     -connect https-example-5.foo.com:443 \
+      #     -servername https-example-5.foo.com \
+      #     -CAfile internal-ca.crt \
+      #     -verify_return_error \
+      #     -showcerts </dev/null

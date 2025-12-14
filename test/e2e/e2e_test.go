@@ -147,6 +147,7 @@ var _ = Describe("Manager", Ordered, func() {
 		cmd = exec.Command("kubectl", "delete", "ns", namespace)
 		_, _ = utils.Run(cmd)
 
+		By("removing secret")
 		// define deleteSecrets function
 		deleteSecret := func(ns string) {
 			By("deleting secret in " + ns)
@@ -158,6 +159,10 @@ var _ = Describe("Manager", Ordered, func() {
 		deleteSecret("ns-3")
 		deleteSecret("ns-5")
 		deleteSecret("ns-8")
+
+		By("reset CoreDNS")
+		err := utils.ResetCoreDNS()
+		Expect(err).NotTo(HaveOccurred(), "Failed to configure CoreDNS")
 
 	})
 
@@ -344,44 +349,59 @@ var _ = Describe("Manager", Ordered, func() {
 		//    fmt.Sprintf(`controller_runtime_reconcile_total{controller="%s",result="success"} 1`,
 		//    strings.ToLower(<Kind>),
 		// ))
-		It("test if checking ingress 1 fails for secret does not define", func() {
-			By("Creating 5 ingresses")
-			createIngress := func(g Gomega) {
+		It("test ingresses's failed and successful cases", func() {
+			By("Configuring CoreDNS before creating ingresses")
+			// In Minikube, all ingresses share the same IP (node IP)
+			// Configure DNS first so controller can resolve hostnames immediately
+			minikubeIP := os.Getenv("MINIKUBE_IP")
+			if minikubeIP == "" {
+				// Get Minikube IP using minikube command
+				minikubeBinary := os.Getenv("MINIKUBE")
+				if minikubeBinary == "" {
+					minikubeBinary = "minikube"
+				}
+				profile := os.Getenv("MINIKUBE_PROFILE")
+				if profile == "" {
+					profile = "minikube"
+				}
+				cmd := exec.Command(minikubeBinary, "ip", "-p", profile)
+				output, err := utils.Run(cmd)
+				Expect(err).NotTo(HaveOccurred(), "Failed to get Minikube IP")
+				minikubeIP = strings.TrimSpace(output)
+			}
+			Expect(minikubeIP).NotTo(BeEmpty(), "Minikube IP is empty")
+
+			hostMappings := make(map[string]string)
+			for i := 1; i <= namespaceNumber; i++ {
+				hostname := fmt.Sprintf("https-example-%d.foo.com", i)
+				hostMappings[hostname] = minikubeIP
+			}
+			err := utils.ConfigureCoreDNS(hostMappings)
+			Expect(err).NotTo(HaveOccurred(), "Failed to configure CoreDNS")
+
+			By("Creating 8 ingresses")
+			for i := 1; i <= namespaceNumber; i++ {
+				cmd := exec.Command("kubectl", "apply", "-f",
+					fmt.Sprintf("test/e2e/ingresses/ns-%d-ingress.yaml", i))
+				output, err := utils.Run(cmd)
+				Expect(err).NotTo(HaveOccurred(), "Failed to create ingress %s", output)
+				fmt.Printf("ingress is created in ns-%d\n", i)
+			}
+
+			By("Waiting for ingresses to get IPs")
+			waitForIngress := func(g Gomega) {
 				for i := 1; i <= namespaceNumber; i++ {
-					cmd := exec.Command("kubectl", "apply", "-f",
-						fmt.Sprintf("test/e2e/ingresses/ns-%d-ingress.yaml", i))
-					output, err := utils.Run(cmd)
-
-					Expect(err).NotTo(HaveOccurred(), "Failed to create custom ingress %s", output)
-
-					cmd = exec.Command(
+					cmd := exec.Command(
 						"kubectl", "get", "ing", fmt.Sprintf("ingress-%d", i),
 						"-n", fmt.Sprintf("ns-%d", i),
 						"-o", "jsonpath={.status.loadBalancer.ingress[0].ip}",
 					)
-					output, err = utils.Run(cmd)
-					Expect(err).NotTo(HaveOccurred(), "Failed to read custom ingress %s", output)
-
-					ip := strings.TrimSpace(output)
-					hostname := fmt.Sprintf("https-example-%d.foo.com", i)
-					g.Expect(ip).NotTo(BeEmpty())
-
-					if ip != "" {
-						// delete the previous line and then add new line
-						cmd = exec.Command("bash", "-c",
-							fmt.Sprintf("sudo sed -i '/[[:space:]]%s$/d' /etc/hosts && echo '%s %s' | sudo tee -a /etc/hosts > /dev/null",
-								hostname, ip, hostname),
-						)
-						output, err = utils.Run(cmd)
-
-						Expect(err).NotTo(HaveOccurred(), "Failed to put host name mapping %s", output)
-
-						fmt.Printf("ingress is created in ns-%d\n", i)
-					}
+					output, err := utils.Run(cmd)
+					g.Expect(err).NotTo(HaveOccurred())
+					g.Expect(strings.TrimSpace(output)).NotTo(BeEmpty(), "ingress-%d has no IP", i)
 				}
 			}
-
-			Eventually(createIngress, 10*time.Minute, time.Second).Should(Succeed())
+			Eventually(waitForIngress, 5*time.Minute, time.Second).Should(Succeed())
 
 			By("Creating result map")
 			// var ErrFetchIngree = errors.New("unable to fetch ingress")

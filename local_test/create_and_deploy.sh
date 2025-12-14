@@ -1,4 +1,4 @@
-# bash
+#!/bin/bash
 cd ../
 
 # Enable ingress-nginx (Necessary!)
@@ -8,6 +8,9 @@ make uninstall
 for i in {1..8}; do
     kubectl delete ns ns-$i
 done
+# Remove DNS records
+kubectl apply -f dns/coredns-original.yaml -n kube-system
+kubectl rollout restart deployment/coredns -n kube-system
 # generate files
 make manifests
 make generate
