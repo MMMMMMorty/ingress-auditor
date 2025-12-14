@@ -166,7 +166,7 @@ spec:
 - `level`: the log severity, including `Error`, `Warn` and `Info`
 - `message`: the log
 
-Generated CRD name rule: `<namespace>-<ingressName>-<generationTimestamp>-<four random number>`
+Generated CRD name rule: `<namespace>-<ingressName>-<generationTimestamp>-<eight random number>`
 
 ### Controller
 

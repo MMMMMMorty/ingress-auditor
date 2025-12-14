@@ -20,7 +20,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math/rand"
 	"strings"
 	"time"
 
@@ -35,6 +34,7 @@ import (
 
 	"github.com/MMMMMMorty/ingress-auditor/internal/store"
 	"github.com/MMMMMMorty/ingress-auditor/internal/utils"
+	"github.com/google/uuid"
 
 	ingressauditv1alpha1 "github.com/MMMMMMorty/ingress-auditor/api/v1alpha1"
 	"github.com/go-logr/logr"
@@ -209,7 +209,7 @@ func (r *IngressTLSLogReconciler) updateValueForKey(key string, err error, updat
 // createTLSLog creates ingresstlslogs instance
 func (r *IngressTLSLogReconciler) createTLSLog(ingress *networkingv1.Ingress, ingressNamespace string, ingressName string, err error, updateTime time.Time) (*ingressauditv1alpha1.IngressTLSLog, error) {
 	timeStr := updateTime.Format("2006-01-02-15-04-05")
-	uniqueSuffix := fmt.Sprintf("%04d", rand.Intn(10000)) // random 4-digit number
+	uniqueSuffix := uuid.NewString()[:8] // random 8-digit number
 	TLSLog := &ingressauditv1alpha1.IngressTLSLog{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      fmt.Sprintf("%s-%s-%s-%s", ingressNamespace, ingressName, timeStr, uniqueSuffix),
