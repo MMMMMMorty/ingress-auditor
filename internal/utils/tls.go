@@ -4,30 +4,35 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
+	"net"
+	"strconv"
+	"time"
 
 	"github.com/go-logr/logr"
 )
 
+const httpsPort = 443
+
 // CheckTLS used the []byte PEM crt and PEM key to connect host with HTTPS
 func CheckTLS(log logr.Logger, crtPEM, keyPEM []byte, host string) error {
-
-	// Load client certificate
-	cert, err := tls.X509KeyPair(crtPEM, keyPEM)
-	if err != nil {
-		return fmt.Errorf("failed to load cert/key: %v", err)
-	}
 
 	// Root CA pool
 	rootCAs := x509.NewCertPool()
 	rootCAs.AppendCertsFromPEM(crtPEM)
 
 	tlsConfig := &tls.Config{
-		Certificates: []tls.Certificate{cert},
-		RootCAs:      rootCAs,
-		ServerName:   host, // important: SNI
+		RootCAs:    rootCAs,
+		ServerName: host, // important: SNI
 	}
 
-	conn, err := tls.Dial("tcp", host+":443", tlsConfig)
+	dialer := &net.Dialer{
+		Timeout:   5 * time.Second, // connection timeout
+		KeepAlive: 5 * time.Second,
+	}
+
+	address := net.JoinHostPort(host, strconv.Itoa(httpsPort))
+
+	conn, err := tls.DialWithDialer(dialer, "tcp", address, tlsConfig)
 	if err != nil {
 		return fmt.Errorf("failed to connect to %s: %v", host, err)
 	}

@@ -60,7 +60,7 @@ const (
 	ErrLogLevel = "Error"
 )
 
-var ErrFetchIngree = errors.New("unable to fetch ingress")
+var ErrFetchIngress = errors.New("unable to fetch ingress")
 var ErrSecretNameMissing = errors.New("the secretName does not define in ingress")
 var ErrFetchSecret = errors.New("unable to fetch secret")
 var ErrCrtOrKeyMissing = errors.New("the crt or key does not exist in secret")
@@ -95,7 +95,13 @@ func (r *IngressTLSLogReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 
 	err := r.Get(ctx, req.NamespacedName, ingress)
 	if err != nil {
-		return r.handleIngressError(ctx, ingress, ingressNs, ingressName, ingressNamespacedName, err, ErrFetchIngree, log)
+		_, exist := r.IngressErrorMap.Get(ingressNamespacedName)
+		if exist {
+			// delete the key-value in map
+			r.IngressErrorMap.Delete(ingressNamespacedName)
+		}
+
+		return r.handleIngressError(ctx, ingress, ingressNs, ingressName, ingressNamespacedName, err, ErrFetchIngress, log)
 	}
 
 	// Check if TLS exists

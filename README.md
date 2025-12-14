@@ -177,7 +177,7 @@ For requirements 1 and 2, the design is shown in the below figure.
 ![Basic design](assets/code_logic.png)
 
 There are eight types of errors, each mapped to a different error message in the CRD:
-- `ErrFetchIngree` : "unable to fetch ingress"
+- `ErrFetchIngress` : "unable to fetch ingress"
 - `ErrSecretNameMissing`: "the secretName does not define in ingress"
 - `ErrFetchSecret`: "unable to fetch secret"
 - `ErrCrtOrKeyMissing`: "the crt or key does not exist in secret"
@@ -290,7 +290,7 @@ Usually the ingressTLSlog is generated under the same namespace as ingress
 ```
 kubectl get ingresstlslogs.ingress-audit.morty.dev -n <ingress-namespace>
 ```
-However, if the error is `ErrFetchIngree` ("unable to fetch ingress"), the log is generated in `ingress-auditor-system` namespace.
+However, if the error is `ErrFetchIngress` ("unable to fetch ingress"), the log is generated in `ingress-auditor-system` namespace.
 ```
 kubectl get ingresstlslogs.ingress-audit.morty.dev -n ingress-auditor-system
 ```

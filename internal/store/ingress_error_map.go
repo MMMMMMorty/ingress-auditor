@@ -29,3 +29,10 @@ func (i *IngressErrorMap) Get(key string) (error, bool) {
 	v, ok := i.m[key]
 	return v, ok
 }
+
+// Delete removes a key from the map
+func (i *IngressErrorMap) Delete(key string) {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	delete(i.m, key)
+}

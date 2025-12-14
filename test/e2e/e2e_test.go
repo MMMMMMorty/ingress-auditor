@@ -404,7 +404,7 @@ var _ = Describe("Manager", Ordered, func() {
 			Eventually(waitForIngress, 5*time.Minute, time.Second).Should(Succeed())
 
 			By("Creating result map")
-			// var ErrFetchIngree = errors.New("unable to fetch ingress")
+			// var ErrFetchIngress = errors.New("unable to fetch ingress")
 			var ErrSecretNameMissing = errors.New("the secretName does not define in ingress")
 			var ErrFetchSecret = errors.New("unable to fetch secret")
 			// var ErrCrtOrKeyMissing = errors.New("the crt or key does not exist in secret")
