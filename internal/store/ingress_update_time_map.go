@@ -25,8 +25,8 @@ func (i *IngressUpdateTimeMap) Set(key string, updateTime time.Time) {
 
 // Get uses key to get value
 func (i *IngressUpdateTimeMap) Get(key string) (time.Time, bool) {
-	i.mu.RLock()
-	defer i.mu.RUnlock()
+	i.mu.Lock()
+	defer i.mu.Unlock()
 	v, ok := i.m[key]
 	return v, ok
 }

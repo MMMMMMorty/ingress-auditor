@@ -24,8 +24,8 @@ func (i *IngressErrorMap) Set(key string, err error) {
 
 // Get uses key to get value
 func (i *IngressErrorMap) Get(key string) (error, bool) {
-	i.mu.RLock()
-	defer i.mu.RUnlock()
+	i.mu.Lock()
+	defer i.mu.Unlock()
 	v, ok := i.m[key]
 	return v, ok
 }
